@@ -14,28 +14,8 @@ import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
 import Tuple exposing (mapFirst, mapSecond, second)
 
 
-
---type alias Model =
-
-
-nUM =
+tempSurahNumber =
     36
-
-
-testSurahsData : SurahData
-testSurahsData =
-    Dict.fromList [ ( 2, Array.fromList [ "a b c d", "cool c d a e" ] ) ]
-
-
-wordsLocs : WordsLocations
-wordsLocs =
-    Dict.fromList
-        [ ( ( 'a', 'a', 'a' ), [ ( 2, 1, 1 ), ( 2, 2, 4 ) ] )
-        , ( ( 'b', 'b', 'b' ), [ ( 2, 1, 2 ), ( 1, 2, 1 ) ] )
-        , ( ( 'c', 'c', 'c' ), [ ( 2, 1, 3 ), ( 1, 2, 2 ) ] )
-        , ( ( 'd', 'd', 'd' ), [ ( 2, 1, 4 ), ( 1, 2, 3 ) ] )
-        , ( ( 'e', 'e', 'e' ), [ ( 2, 2, 5 ) ] )
-        ]
 
 
 decodeLocations : Decoder WordsLocations
@@ -50,21 +30,12 @@ decodeSurah =
 
 myDic : Decoder (List String) -> Decoder SurahData
 myDic deco =
-    Decode.map (\list -> Dict.insert nUM (Array.fromList (drop 1 list)) Dict.empty) deco
+    Decode.map (\list -> Dict.insert tempSurahNumber (Array.fromList (drop 1 list)) Dict.empty) deco
 
 
-toRoots : List ( String, List String ) -> List ( ( Char, Char, Char ), List Location )
+toRoots : List ( String, List String ) -> List ( String, List Location )
 toRoots list =
-    map (\( s, l ) -> ( toRoot s, map toLocs l )) list
-
-
-toRoot : String -> ( Char, Char, Char )
-toRoot s =
-    Debug.log "root" s |> String.toList |> filter (\c -> c /= ' ') |> Array.fromList |> (\arr -> ( Array.get 0 arr, Array.get 1 arr, Array.get 2 arr )) |> justit
-
-
-justit ( a, b, c ) =
-    ( Maybe.withDefault ' ' a, Maybe.withDefault ' ' b, Maybe.withDefault ' ' c )
+    map (\( s, l ) -> ( s, map toLocs l )) list
 
 
 toLocs : String -> Location
@@ -82,34 +53,55 @@ toTuple3 l =
             ( 0, 0, 0 )
 
 
+
+-- Ajax Requests
+
+
+rootsToLocationsUrl =
+    "https://sbakht.github.io/corpus-2.0/output.json"
+
+
+surahsUrl =
+    "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah/surah_"
+
+
+getSurahRequestUrl : Int -> String
+getSurahRequestUrl surahNumber =
+    surahsUrl ++ fromInt surahNumber ++ ".json"
+
+
 wordsCmd : Cmd Msg
 wordsCmd =
     decodeLocations
-        |> Http.get "https://sbakht.github.io/corpus-2.0/output.json"
+        |> Http.get rootsToLocationsUrl
         |> Http.send LoadWordLocations
 
 
 surahCmd : Cmd Msg
 surahCmd =
     decodeSurah
-        |> Http.get (getSurahRequestUrl nUM)
+        |> Http.get (getSurahRequestUrl tempSurahNumber)
         |> Http.send LoadSurah
+
+
+
+-- Model
+
+
+type alias Model =
+    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : Dict String (List Location), known : Known, surahNumber : Int }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { surahs = testSurahsData
-      , locationsWord = toRootsBySurah wordsLocs
-      , wordsLocations = wordsLocs
+    ( { surahs = Dict.empty
+      , locationsWord = toRootsBySurah Dict.empty
+      , wordsLocations = Dict.empty
       , known = Dict.empty
-      , surahNumber = nUM
+      , surahNumber = tempSurahNumber
       }
     , surahCmd
     )
-
-
-type alias Model =
-    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : Dict ( Char, Char, Char ) (List Location), known : Known, surahNumber : Int }
 
 
 type Surahs
@@ -129,11 +121,11 @@ type alias SurahData =
 
 
 type alias WordsLocations =
-    Dict ( Char, Char, Char ) (List Location)
+    Dict String (List Location)
 
 
 type Root
-    = Root ( Char, Char, Char )
+    = Root String
 
 
 type alias Index =
@@ -145,15 +137,10 @@ type alias Location =
 
 
 type alias Known =
-    Dict ( Char, Char, Char ) ()
+    Dict String ()
 
 
-getSurahRequestUrl : Int -> String
-getSurahRequestUrl surahNumber =
-    "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah/surah_" ++ fromInt surahNumber ++ ".json"
-
-
-wordToTokens : ( Char, Char, Char ) -> Location -> Tokens -> Tokens
+wordToTokens : String -> Location -> Tokens -> Tokens
 wordToTokens root ( si, ai, wi ) (Tokens tokens) =
     Tokens <| Dict.insert wi (Root root) tokens
 
@@ -224,15 +211,15 @@ update msg model =
     case msg of
         SetKnown root ->
             let
-                learn : Root -> Dict ( Char, Char, Char ) () -> Dict ( Char, Char, Char ) ()
+                learn : Root -> Dict String () -> Dict String ()
                 learn (Root rootLetters) learned =
                     Dict.insert rootLetters () learned
 
-                forget : Root -> Dict ( Char, Char, Char ) () -> Dict ( Char, Char, Char ) ()
+                forget : Root -> Dict String () -> Dict String ()
                 forget (Root rootLetters) learned =
                     Dict.remove rootLetters learned
             in
-            if root == Root ( ' ', ' ', ' ' ) then
+            if root == Root " " then
                 ( model, Cmd.none )
 
             else if isLearned root model.known then
@@ -312,7 +299,7 @@ viewWord model tokens ( wi, w ) =
             isLearned root model.known
 
         isLearnable =
-            root /= Root ( ' ', ' ', ' ' )
+            root /= Root " "
     in
     span
         [ classList
@@ -337,7 +324,7 @@ indexBy1 =
 
 getRootFromWord : Index -> Tokens -> Root
 getRootFromWord index (Tokens token) =
-    Dict.get index token |> Maybe.withDefault (Root ( ' ', ' ', ' ' ))
+    Dict.get index token |> Maybe.withDefault (Root " ")
 
 
 viewLearnables : Model -> Html Msg
@@ -357,23 +344,18 @@ isLearned (Root root) known =
 
 
 viewLearnableWord : Root -> Bool -> Html Msg
-viewLearnableWord root learned =
+viewLearnableWord (Root root) learned =
     li []
         [ label []
             [ input
                 [ type_ "checkbox"
-                , onClick (SetKnown root)
+                , onClick (SetKnown (Root root))
                 , checked learned
                 ]
                 []
-            , rootToText root
+            , text root
             ]
         ]
-
-
-rootToText : Root -> Html Msg
-rootToText (Root ( a, b, c )) =
-    text (fromChar a ++ " " ++ fromChar b ++ " " ++ fromChar c)
 
 
 main : Program () Model Msg
