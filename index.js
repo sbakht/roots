@@ -12,14 +12,17 @@ app.get('/scrape', function(req, res) {
     fs.readFile('output.json', 'utf8', function(err, input) {
         let json = JSON.parse(input);
         let rootList;
-        request(baseUrl + pageRoots, function(error, response, html) {
+        request({
+            url: baseUrl,
+            qs: {q : pageRoots}
+            }, function(error, response, html) {
             console.log('Fetching base ' + baseUrl + pageRoots);
             if (!error) {
                 var $ = cheerio.load(html);
                 addRootData($, json, pageRoots);
                 rootList = getRootList($);
                 captureRoots = rootList.filter((root) => {
-                    return !json[root];
+                    return !json[root.arabic];
                 });
                 captureRoots.map((root, i) => requestRoot(json, root, i));
             }
@@ -42,24 +45,29 @@ function getRootList($) {
     let list = []
     $('#entryList option').each(function() {
         let data = $(this);
-        list.push(decodeURI(data.val()));
+        list.push({
+            english: decodeURI(data.val()),
+            arabic: decodeURI(data.text())
+        });
     })
     return list;
 }
 
 function requestRoot(json, roots, i) {
-    let url = baseUrl + roots;
     if (!json[roots]) {
         setTimeout(() => {
-            request(url + roots, function(error, response, html) {
-                console.log('Fetching ' + url);
+            request({
+                url: baseUrl,
+                qs: {q : roots.english}
+            }, function(error, response, html) {
+                console.log('Fetching ' + roots.english);
                 if (!error) {
                     var $ = cheerio.load(html);
-                    addRootData($, json, roots);
+                    addRootData($, json, roots.arabic);
                 }
-                writeToFile(json, "Writing " + roots);
+                writeToFile(json, "Writing " + roots.english);
                 if (++count === captureRoots.length) {
-                    console.log('All requests done!', roots);
+                    console.log('All requests done!', roots.english);
                 }
             });
         }, 3000 * (i + 1))

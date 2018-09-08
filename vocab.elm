@@ -1,40 +1,55 @@
 module Vocab exposing (main)
 
 import Array exposing (Array)
+import Browser
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, input, label, li, p, span, text, ul)
 import Html.Attributes exposing (checked, classList, type_)
 import Html.Events exposing (onClick)
-import List exposing (map)
-import String exposing (fromChar, split, toInt, dropLeft, dropRight)
-import Json.Decode as Decode exposing (Decoder, int, list, string)
-import Json.Decode.Pipeline exposing (required)
-import Tuple exposing (mapFirst, mapSecond)
 import Http
+import Json.Decode as Decode exposing (Decoder, field, int, list, string)
+import List exposing (drop, map)
+import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
+import Tuple exposing (mapFirst, mapSecond, second)
+
 
 
 --type alias Model =
 
 
-surahs : Dict Int (Array String)
-surahs =
-    Dict.fromList [ ( 1, Array.fromList [ "a b c d", "cool c d a e" ] ) ]
+nUM =
+   36 
+
+
+testSurahsData : SurahData
+testSurahsData =
+    Dict.fromList [ ( 2, Array.fromList [ "a b c d", "cool c d a e" ] ) ]
 
 
 wordsLocs : WordsLocations
 wordsLocs =
     Dict.fromList
-        [ ( ( 'a', 'a', 'a' ), [ ( 1, 1, 1 ), ( 1, 2, 4 ) ] )
-        , ( ( 'b', 'b', 'b' ), [ ( 1, 1, 2 ), ( 1, 2, 1 ) ] )
-        , ( ( 'c', 'c', 'c' ), [ ( 1, 1, 3 ), ( 1, 2, 2 ) ] )
-        , ( ( 'd', 'd', 'd' ), [ ( 1, 1, 4 ), ( 1, 2, 3 ) ] )
-        , ( ( 'e', 'e', 'e' ), [ ( 1, 2, 5 ) ] )
+        [ ( ( 'a', 'a', 'a' ), [ ( 2, 1, 1 ), ( 2, 2, 4 ) ] )
+        , ( ( 'b', 'b', 'b' ), [ ( 2, 1, 2 ), ( 1, 2, 1 ) ] )
+        , ( ( 'c', 'c', 'c' ), [ ( 2, 1, 3 ), ( 1, 2, 2 ) ] )
+        , ( ( 'd', 'd', 'd' ), [ ( 2, 1, 4 ), ( 1, 2, 3 ) ] )
+        , ( ( 'e', 'e', 'e' ), [ ( 2, 2, 5 ) ] )
         ]
 
 
 decodeLocations : Decoder WordsLocations
 decodeLocations =
-    Decode.keyValuePairs (list string) |> Decode.map (toRoots >> Dict.fromList)
+    field "roots" (Decode.keyValuePairs (list string) |> Decode.map (toRoots >> Dict.fromList))
+
+
+decodeSurah : Decoder SurahData
+decodeSurah =
+    field "verse" (Decode.keyValuePairs string) |> Decode.map (map second) |> myDic
+
+
+myDic : Decoder (List String) -> Decoder SurahData
+myDic deco =
+    Decode.map (\list -> Dict.insert nUM (Array.fromList (drop 1 list)) Dict.empty) deco
 
 
 toRoots : List ( String, List String ) -> List ( ( Char, Char, Char ), List Location )
@@ -44,7 +59,7 @@ toRoots list =
 
 toRoot : String -> ( Char, Char, Char )
 toRoot s =
-    String.toList s |> Array.fromList |> (\arr -> ( Array.get 0 arr, Array.get 1 arr, Array.get 2 arr )) |> justit
+    Debug.log "root" s |> String.toList |> Array.fromList |> (\arr -> ( Array.get 0 arr, Array.get 1 arr, Array.get 2 arr )) |> justit
 
 
 justit ( a, b, c ) =
@@ -53,7 +68,7 @@ justit ( a, b, c ) =
 
 toLocs : String -> Location
 toLocs s =
-    dropLeft 1 s |> dropRight 1 |> split ":" |> map (toInt >> Result.withDefault 0) |> toTuple3
+    dropLeft 1 s |> dropRight 1 |> split ":" |> map (toInt >> Maybe.withDefault 0) |> toTuple3
 
 
 toTuple3 : List Int -> Location
@@ -66,40 +81,29 @@ toTuple3 l =
             ( 0, 0, 0 )
 
 
-test =
-    """{ "aaa": ["(1:1:1)","(1:2:4)"]}"""
-
-
-runDecode : String -> Result String WordsLocations
-runDecode test =
-    Decode.decodeString decodeLocations test
-
-
-go locs =
-    case runDecode locs of
-        Ok result ->
-            result
-
-        Err x ->
-            wordsLocs
-
-
-initialCmd : Cmd Msg
-initialCmd =
+wordsCmd : Cmd Msg
+wordsCmd =
     decodeLocations
-        |> Http.get "http://localhost:3000/roots"
+        |> Http.get "https://sbakht.github.io/corpus-2.0/output.json"
         |> Http.send LoadWordLocations
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( { surahs = surahs
+surahCmd : Cmd Msg
+surahCmd =
+    decodeSurah
+        |> Http.get (getSurahRequestUrl nUM)
+        |> Http.send LoadSurah
+
+
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( { surahs = testSurahsData
       , locationsWord = toRootsBySurah wordsLocs
       , wordsLocations = wordsLocs
       , known = Dict.empty
-      , surahNumber = 1
+      , surahNumber = nUM
       }
-    , Cmd.none
+    , surahCmd
     )
 
 
@@ -117,6 +121,10 @@ type Ayats
 
 type Tokens
     = Tokens (Dict Index Root)
+
+
+type alias SurahData =
+    Dict Int (Array String)
 
 
 type alias WordsLocations =
@@ -137,6 +145,11 @@ type alias Location =
 
 type alias Known =
     Dict ( Char, Char, Char ) ()
+
+
+getSurahRequestUrl : Int -> String
+getSurahRequestUrl surahNumber =
+    "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah/surah_" ++ fromInt surahNumber ++ ".json"
 
 
 wordToTokens : ( Char, Char, Char ) -> Location -> Tokens -> Tokens
@@ -171,22 +184,22 @@ addRoot (Root root) ( si, ai, wi ) (Surahs surahs) =
         test ayats tokens =
             Ayats <| Dict.insert ai (newToken tokens) ayats
     in
-        case Dict.get si surahs of
-            Just (Ayats ayats) ->
-                case Dict.get ai ayats of
-                    Just (Tokens tokens) ->
-                        case Dict.get wi tokens of
-                            Just _ ->
-                                Debug.crash "word collison"
+    case Dict.get si surahs of
+        Just (Ayats ayats) ->
+            case Dict.get ai ayats of
+                Just (Tokens tokens) ->
+                    case Dict.get wi tokens of
+                        Just _ ->
+                            Debug.log "word collison" (Surahs surahs)
 
-                            Nothing ->
-                                Surahs (Dict.insert si (test ayats tokens) surahs)
+                        Nothing ->
+                            Surahs (Dict.insert si (test ayats tokens) surahs)
 
-                    Nothing ->
-                        Surahs (Dict.insert si (newAyat ayats) surahs)
+                Nothing ->
+                    Surahs (Dict.insert si (newAyat ayats) surahs)
 
-            Nothing ->
-                newSurah
+        Nothing ->
+            newSurah
 
 
 ayatsFrom : Index -> Surahs -> Ayats
@@ -201,6 +214,7 @@ tokensFrom index (Ayats ayats) =
 
 type Msg
     = SetKnown Root
+    | LoadSurah (Result Http.Error SurahData)
     | LoadWordLocations (Result Http.Error WordsLocations)
 
 
@@ -210,17 +224,24 @@ update msg model =
         SetKnown root ->
             let
                 learn : Root -> Dict ( Char, Char, Char ) () -> Dict ( Char, Char, Char ) ()
-                learn (Root root) learned =
-                    Dict.insert root () learned
+                learn (Root rootLetters) learned =
+                    Dict.insert rootLetters () learned
 
                 forget : Root -> Dict ( Char, Char, Char ) () -> Dict ( Char, Char, Char ) ()
-                forget (Root root) learned =
-                    Dict.remove root learned
+                forget (Root rootLetters) learned =
+                    Dict.remove rootLetters learned
             in
-                if isLearned root model.known then
-                    ( { model | known = forget root model.known }, Cmd.none )
-                else
-                    ( { model | known = learn root model.known }, Cmd.none )
+            if isLearned root model.known then
+                ( { model | known = forget root model.known }, Cmd.none )
+
+            else
+                ( { model | known = learn root model.known }, Cmd.none )
+
+        LoadSurah (Ok surahData) ->
+            ( { model | surahs = surahData }, wordsCmd )
+
+        LoadSurah _ ->
+            ( model, Cmd.none )
 
         LoadWordLocations (Ok locations) ->
             ( { model | locationsWord = toRootsBySurah locations, wordsLocations = locations }, Cmd.none )
@@ -235,12 +256,12 @@ viewSurah model =
         ayats =
             ayatsFrom model.surahNumber model.locationsWord
     in
-        Dict.get model.surahNumber model.surahs
-            |> Maybe.withDefault Array.empty
-            |> Array.toIndexedList
-            |> indexBy1
-            |> map (viewAyat model ayats)
-            |> div []
+    Dict.get model.surahNumber model.surahs
+        |> Maybe.withDefault Array.empty
+        |> Array.toIndexedList
+        |> indexBy1
+        |> map (viewAyat model ayats)
+        |> div []
 
 
 viewAyat : Model -> Ayats -> ( Int, String ) -> Html Msg
@@ -248,15 +269,35 @@ viewAyat model ayats ( ai, s ) =
     let
         tokens =
             tokensFrom ai ayats
+
+        joinYaa list =
+            List.foldr addWhenYaa [] list
+
+        encode = "\u{064A}\u{064E}\u{0627}"
+
+        addWhenYaa curr accum =
+            case curr of
+                "\u{064A}\u{064E}\u{0627}" ->
+                    case accum of
+                        (x::xs) ->
+                            (encode ++ " " ++ x) :: xs
+                        _ ->
+                            curr :: accum
+
+                _ ->
+                    curr :: accum
     in
-        p []
-            (s
-                |> String.split " "
-                |> Array.fromList
-                |> Array.toIndexedList
-                |> indexBy1
-                |> map (viewWord model tokens)
-            )
+    p []
+        ((s
+            |> String.split " "
+            |> joinYaa
+            |> Array.fromList
+            |> Array.toIndexedList
+            |> indexBy1
+            |> map (viewWord model tokens)
+         )
+            ++ [ span [] [ text <| fromInt ai ] ]
+        )
 
 
 viewWord : Model -> Tokens -> ( Int, String ) -> Html Msg
@@ -265,7 +306,7 @@ viewWord model tokens ( wi, w ) =
         isKnown =
             isLearned (getRootFromWord wi tokens) model.known
     in
-        span [ classList [ ( "known", isKnown ) ] ] [ text (w ++ " " ++ "") ]
+    span [ classList [ ( "known", isKnown ) ] ] [ text (w ++ " " ++ "") ]
 
 
 view : Model -> Html Msg
@@ -320,6 +361,6 @@ rootToText (Root ( a, b, c )) =
     text (fromChar a ++ " " ++ fromChar b ++ " " ++ fromChar c)
 
 
-main : Program Never Model Msg
+main : Program () Model Msg
 main =
-    Html.program { init = init, view = view, update = update, subscriptions = \_ -> Sub.none }
+    Browser.element { init = init, view = view, update = update, subscriptions = \_ -> Sub.none }
