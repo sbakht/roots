@@ -39,7 +39,7 @@ wordsLocs =
 
 decodeLocations : Decoder WordsLocations
 decodeLocations =
-    field "roots" (Decode.keyValuePairs (list string) |> Decode.map (toRoots >> Dict.fromList))
+    Decode.keyValuePairs (list string) |> Decode.map (toRoots >> Dict.fromList)
 
 
 decodeSurah : Decoder SurahData
