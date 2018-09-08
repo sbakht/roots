@@ -3,12 +3,13 @@ module Vocab exposing (main)
 import Array exposing (Array)
 import Browser
 import Dict exposing (Dict)
+import EncodeString exposing (encode)
 import Html exposing (Html, a, div, input, label, li, p, span, text, ul)
 import Html.Attributes exposing (checked, classList, type_)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
-import List exposing (drop, map, filter)
+import List exposing (drop, filter, map)
 import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
 import Tuple exposing (mapFirst, mapSecond, second)
 
@@ -18,7 +19,7 @@ import Tuple exposing (mapFirst, mapSecond, second)
 
 
 nUM =
-   36 
+    36
 
 
 testSurahsData : SurahData
@@ -231,14 +232,14 @@ update msg model =
                 forget (Root rootLetters) learned =
                     Dict.remove rootLetters learned
             in
-            if root == Root (' ', ' ', ' ') then
-                (model, Cmd.none)
-            else
-                if isLearned root model.known then
-                    ( { model | known = forget root model.known }, Cmd.none )
+            if root == Root ( ' ', ' ', ' ' ) then
+                ( model, Cmd.none )
 
-                else
-                    ( { model | known = learn root model.known }, Cmd.none )
+            else if isLearned root model.known then
+                ( { model | known = forget root model.known }, Cmd.none )
+
+            else
+                ( { model | known = learn root model.known }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
             ( { model | surahs = surahData }, wordsCmd )
@@ -276,19 +277,17 @@ viewAyat model ayats ( ai, s ) =
         joinYaa list =
             List.foldr addWhenYaa [] list
 
-        encode = "\u{064A}\u{064E}\u{0627}"
-
         addWhenYaa curr accum =
-            case curr of
-                "\u{064A}\u{064E}\u{0627}" ->
-                    case accum of
-                        (x::xs) ->
-                            (encode ++ " " ++ x) :: xs
-                        _ ->
-                            curr :: accum
+            if curr == encode then
+                case accum of
+                    x :: xs ->
+                        (encode ++ " " ++ x) :: xs
 
-                _ ->
-                    curr :: accum
+                    _ ->
+                        curr :: accum
+
+            else
+                curr :: accum
     in
     p []
         ((s
@@ -306,13 +305,23 @@ viewAyat model ayats ( ai, s ) =
 viewWord : Model -> Tokens -> ( Int, String ) -> Html Msg
 viewWord model tokens ( wi, w ) =
     let
-        root = (getRootFromWord wi tokens)
+        root =
+            getRootFromWord wi tokens
+
         isKnown =
             isLearned root model.known
-        isLearnable = root /= Root (' ', ' ', ' ')
+
+        isLearnable =
+            root /= Root ( ' ', ' ', ' ' )
     in
-    span [ classList [ ( "known", isKnown ), ("learnable", isLearnable)
-        ], onClick (SetKnown root) ] [ text (w ++ " " ++ "") ]
+    span
+        [ classList
+            [ ( "known", isKnown )
+            , ( "learnable", isLearnable )
+            ]
+        , onClick (SetKnown root)
+        ]
+        [ text (w ++ " " ++ "") ]
 
 
 view : Model -> Html Msg
