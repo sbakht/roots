@@ -8,7 +8,7 @@ import Html.Attributes exposing (checked, classList, type_)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
-import List exposing (drop, map)
+import List exposing (drop, map, filter)
 import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
 import Tuple exposing (mapFirst, mapSecond, second)
 
@@ -59,7 +59,7 @@ toRoots list =
 
 toRoot : String -> ( Char, Char, Char )
 toRoot s =
-    Debug.log "root" s |> String.toList |> Array.fromList |> (\arr -> ( Array.get 0 arr, Array.get 1 arr, Array.get 2 arr )) |> justit
+    Debug.log "root" s |> String.toList |> filter (\c -> c /= ' ') |> Array.fromList |> (\arr -> ( Array.get 0 arr, Array.get 1 arr, Array.get 2 arr )) |> justit
 
 
 justit ( a, b, c ) =
@@ -231,11 +231,14 @@ update msg model =
                 forget (Root rootLetters) learned =
                     Dict.remove rootLetters learned
             in
-            if isLearned root model.known then
-                ( { model | known = forget root model.known }, Cmd.none )
-
+            if root == Root (' ', ' ', ' ') then
+                (model, Cmd.none)
             else
-                ( { model | known = learn root model.known }, Cmd.none )
+                if isLearned root model.known then
+                    ( { model | known = forget root model.known }, Cmd.none )
+
+                else
+                    ( { model | known = learn root model.known }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
             ( { model | surahs = surahData }, wordsCmd )
@@ -303,10 +306,13 @@ viewAyat model ayats ( ai, s ) =
 viewWord : Model -> Tokens -> ( Int, String ) -> Html Msg
 viewWord model tokens ( wi, w ) =
     let
+        root = (getRootFromWord wi tokens)
         isKnown =
-            isLearned (getRootFromWord wi tokens) model.known
+            isLearned root model.known
+        isLearnable = root /= Root (' ', ' ', ' ')
     in
-    span [ classList [ ( "known", isKnown ) ] ] [ text (w ++ " " ++ "") ]
+    span [ classList [ ( "known", isKnown ), ("learnable", isLearnable)
+        ], onClick (SetKnown root) ] [ text (w ++ " " ++ "") ]
 
 
 view : Model -> Html Msg
