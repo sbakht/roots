@@ -11,7 +11,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
 import List exposing (drop, filter, map)
 import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
-import Tuple exposing (mapFirst, mapSecond, second)
+import Tuple exposing (first, mapFirst, mapSecond, second)
 
 
 tempSurahNumber =
@@ -21,9 +21,14 @@ tempSurahNumber =
 decodeLocations : Decoder WordsLocations
 decodeLocations =
     Decode.keyValuePairs
-        (field "location" string
-            |> Decode.map toLocs
-            |> Decode.map WordInfo
+        (Decode.map4
+            (\loc translit translat word ->
+                WordInfo (toLocs loc) translit translat word
+            )
+            (field "location" string)
+            (field "transliteration" string)
+            (field "translation" string)
+            (field "word" string)
             |> list
         )
         |> Decode.map Dict.fromList
@@ -95,7 +100,7 @@ surahCmd =
 
 
 type alias Model =
-    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : WordsLocations, known : Known, surahNumber : Int, activeRoot : Maybe String }
+    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : WordsLocations, known : Known, surahNumber : Int, activeRoot : Maybe ( String, Location ) }
 
 
 init : () -> ( Model, Cmd Msg )
@@ -132,7 +137,7 @@ type alias WordsLocations =
 
 
 type alias WordInfo =
-    { location : Location }
+    { location : Location, transliteration : String, translation : String, word : String }
 
 
 type Root
@@ -215,7 +220,7 @@ type Msg
     = SetKnown Root
     | LoadSurah (Result Http.Error SurahData)
     | LoadWordLocations (Result Http.Error WordsLocations)
-    | SetActiveRoot Root
+    | SetActiveRoot ( Root, Location )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -240,12 +245,12 @@ update msg model =
             else
                 ( { model | known = learn root model.known }, Cmd.none )
 
-        SetActiveRoot (Root root) ->
+        SetActiveRoot ( Root root, loc ) ->
             if root == "" then
                 ( { model | activeRoot = Nothing }, Cmd.none )
 
             else
-                ( { model | activeRoot = Just root }, Cmd.none )
+                ( { model | activeRoot = Just ( root, loc ) }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
             ( { model | surahs = surahData }, wordsCmd )
@@ -302,14 +307,14 @@ viewAyat model ayats ( ai, s ) =
             |> Array.fromList
             |> Array.toIndexedList
             |> indexBy1
-            |> map (viewWord model tokens)
+            |> map (viewWord model tokens ai)
          )
             ++ [ span [] [ text <| fromInt ai ] ]
         )
 
 
-viewWord : Model -> Tokens -> ( Int, String ) -> Html Msg
-viewWord model tokens ( wi, w ) =
+viewWord : Model -> Tokens -> Int -> ( Int, String ) -> Html Msg
+viewWord model tokens ai ( wi, w ) =
     let
         root =
             getRootFromWord wi tokens
@@ -325,7 +330,7 @@ viewWord model tokens ( wi, w ) =
             [ ( "known", isKnown )
             , ( "learnable", isLearnable )
             ]
-        , onClick (SetActiveRoot root)
+        , onClick (SetActiveRoot ( root, ( model.surahNumber, ai, wi ) ))
         ]
         [ text (w ++ " " ++ "") ]
 
@@ -338,7 +343,7 @@ view model =
             div [ class "content" ] [ viewSurah model ]
 
           else
-            div [ class "content", onClick (SetActiveRoot (Root "")) ] [ viewSurah model ]
+            div [ class "content", onClick (SetActiveRoot ( Root "", ( 0, 0, 0 ) )) ] [ viewSurah model ]
         ]
 
 
@@ -386,12 +391,72 @@ viewLearnableWord (Root root) learned =
 viewOverlay : Model -> Html Msg
 viewOverlay model =
     case model.activeRoot of
-        Just root ->
+        Just ( root, loc ) ->
             div [ id "drawer" ]
-                [ viewLearnableWord (Root root) (isLearned (Root root) model.known) ]
+                [ viewLearnableWord (Root root) (isLearned (Root root) model.known)
+                , viewSelectedWordInfo model.wordsLocations root loc
+                , viewOtherWordsWithSameRoot model.wordsLocations root loc
+                ]
 
         Nothing ->
             text ""
+
+
+viewSelectedWordInfo : WordsLocations -> String -> Location -> Html Msg
+viewSelectedWordInfo wordsLocations root location =
+    case Dict.get root wordsLocations of
+        Just wordsInfo ->
+            div []
+                (wordsInfo
+                    |> filterToActiveWord location
+                    |> printAllWordsDetails
+                )
+
+        Nothing ->
+            text ""
+
+
+filterToActiveWord : Location -> List WordInfo -> List WordInfo
+filterToActiveWord location =
+    filter (\wordInfo -> wordInfo.location == location)
+
+
+filterOutActiveWord : Location -> List WordInfo -> List WordInfo
+filterOutActiveWord location =
+    filter (\wordInfo -> wordInfo.location /= location)
+
+
+viewOtherWordsWithSameRoot : WordsLocations -> String -> Location -> Html Msg
+viewOtherWordsWithSameRoot wordsLocations root location =
+    case Dict.get root wordsLocations of
+        Just wordsInfo ->
+            div []
+                (wordsInfo
+                    |> filterOutActiveWord location
+                    |> printAllWordsDetails
+                )
+
+        Nothing ->
+            text ""
+
+
+printAllWordsDetails : List WordInfo -> List (Html Msg)
+printAllWordsDetails =
+    map printWordDetails
+
+
+printWordDetails : WordInfo -> Html Msg
+printWordDetails wordInfo =
+    div []
+        [ span [] [ text (locationToString wordInfo.location) ]
+        , span [] [ text wordInfo.translation ]
+        , span [] [ text wordInfo.word ]
+        ]
+
+
+locationToString : Location -> String
+locationToString ( a, b, c ) =
+    fromInt a ++ ":" ++ fromInt b ++ ":" ++ fromInt c
 
 
 main : Program () Model Msg
