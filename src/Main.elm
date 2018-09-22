@@ -20,7 +20,13 @@ tempSurahNumber =
 
 decodeLocations : Decoder WordsLocations
 decodeLocations =
-    Decode.keyValuePairs (list (field "location" string)) |> Decode.map (toRoots >> Dict.fromList)
+    Decode.keyValuePairs
+        (field "location" string
+            |> Decode.map toLocs
+            |> Decode.map WordInfo
+            |> list
+        )
+        |> Decode.map Dict.fromList
 
 
 decodeSurah : Decoder SurahData
@@ -89,7 +95,7 @@ surahCmd =
 
 
 type alias Model =
-    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : Dict String (List Location), known : Known, surahNumber : Int, activeRoot : Maybe String }
+    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : WordsLocations, known : Known, surahNumber : Int, activeRoot : Maybe String }
 
 
 init : () -> ( Model, Cmd Msg )
@@ -122,7 +128,11 @@ type alias SurahData =
 
 
 type alias WordsLocations =
-    Dict String (List Location)
+    Dict String (List WordInfo)
+
+
+type alias WordInfo =
+    { location : Location }
 
 
 type Root
@@ -150,7 +160,7 @@ toRootsBySurah : WordsLocations -> Surahs
 toRootsBySurah words =
     Dict.foldl
         (\root locs dic ->
-            List.foldl (\loc surahs -> addRoot (Root root) loc surahs) dic locs
+            List.foldl (\wordInfo surahs -> addRoot (Root root) wordInfo.location surahs) dic locs
         )
         (Surahs Dict.empty)
         words
