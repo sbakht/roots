@@ -5,7 +5,7 @@ import Browser
 import Dict exposing (Dict)
 import EncodeString exposing (encode)
 import Html exposing (Html, a, div, input, label, li, p, span, text, ul)
-import Html.Attributes exposing (checked, classList, type_)
+import Html.Attributes exposing (checked, class, classList, for, id, name, type_)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
@@ -58,7 +58,7 @@ toTuple3 l =
 
 
 rootsToLocationsUrl =
-    "https://sbakht.github.io/corpus-2.0/output.json"
+    "https://sbakht.github.io/corpus-2.0/src/corpus-parser/output.json"
 
 
 surahsUrl =
@@ -89,7 +89,7 @@ surahCmd =
 
 
 type alias Model =
-    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : Dict String (List Location), known : Known, surahNumber : Int }
+    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : Dict String (List Location), known : Known, surahNumber : Int, activeRoot : Maybe String }
 
 
 init : () -> ( Model, Cmd Msg )
@@ -99,6 +99,7 @@ init _ =
       , wordsLocations = Dict.empty
       , known = Dict.empty
       , surahNumber = tempSurahNumber
+      , activeRoot = Nothing
       }
     , surahCmd
     )
@@ -204,6 +205,7 @@ type Msg
     = SetKnown Root
     | LoadSurah (Result Http.Error SurahData)
     | LoadWordLocations (Result Http.Error WordsLocations)
+    | SetActiveRoot Root
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -219,7 +221,7 @@ update msg model =
                 forget (Root rootLetters) learned =
                     Dict.remove rootLetters learned
             in
-            if root == Root " " then
+            if root == Root "" then
                 ( model, Cmd.none )
 
             else if isLearned root model.known then
@@ -227,6 +229,13 @@ update msg model =
 
             else
                 ( { model | known = learn root model.known }, Cmd.none )
+
+        SetActiveRoot (Root root) ->
+            if root == "" then
+                ( { model | activeRoot = Nothing }, Cmd.none )
+
+            else
+                ( { model | activeRoot = Just root }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
             ( { model | surahs = surahData }, wordsCmd )
@@ -299,14 +308,14 @@ viewWord model tokens ( wi, w ) =
             isLearned root model.known
 
         isLearnable =
-            root /= Root " "
+            root /= Root ""
     in
     span
         [ classList
             [ ( "known", isKnown )
             , ( "learnable", isLearnable )
             ]
-        , onClick (SetKnown root)
+        , onClick (SetActiveRoot root)
         ]
         [ text (w ++ " " ++ "") ]
 
@@ -314,7 +323,13 @@ viewWord model tokens ( wi, w ) =
 view : Model -> Html Msg
 view model =
     div []
-        [ viewSurah model, viewLearnables model ]
+        [ viewOverlay model
+        , if model.activeRoot == Nothing then
+            div [ class "content" ] [ viewSurah model ]
+
+          else
+            div [ class "content", onClick (SetActiveRoot (Root "")) ] [ viewSurah model ]
+        ]
 
 
 indexBy1 : List ( Int, String ) -> List ( Int, String )
@@ -324,7 +339,7 @@ indexBy1 =
 
 getRootFromWord : Index -> Tokens -> Root
 getRootFromWord index (Tokens token) =
-    Dict.get index token |> Maybe.withDefault (Root " ")
+    Dict.get index token |> Maybe.withDefault (Root "")
 
 
 viewLearnables : Model -> Html Msg
@@ -356,6 +371,17 @@ viewLearnableWord (Root root) learned =
             , text root
             ]
         ]
+
+
+viewOverlay : Model -> Html Msg
+viewOverlay model =
+    case model.activeRoot of
+        Just root ->
+            div [ id "drawer" ]
+                [ viewLearnableWord (Root root) (isLearned (Root root) model.known) ]
+
+        Nothing ->
+            text ""
 
 
 main : Program () Model Msg
