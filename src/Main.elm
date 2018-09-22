@@ -20,7 +20,7 @@ tempSurahNumber =
 
 decodeLocations : Decoder WordsLocations
 decodeLocations =
-    Decode.keyValuePairs (list string) |> Decode.map (toRoots >> Dict.fromList)
+    Decode.keyValuePairs (list (field "location" string)) |> Decode.map (toRoots >> Dict.fromList)
 
 
 decodeSurah : Decoder SurahData
@@ -58,7 +58,7 @@ toTuple3 l =
 
 
 rootsToLocationsUrl =
-    "https://sbakht.github.io/corpus-2.0/src/corpus-parser/output.json"
+    "https://raw.githubusercontent.com/sbakht/corpus-2.0/master/src/corpus-parser/output.json"
 
 
 surahsUrl =
