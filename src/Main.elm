@@ -18,13 +18,11 @@ tempSurahNumber =
     36
 
 
-decodeLocations : Decoder WordsLocations
+decodeLocations : Decoder RootsData
 decodeLocations =
     Decode.keyValuePairs
         (Decode.map4
-            (\loc translit translat word ->
-                WordInfo (toLocs loc) translit translat word
-            )
+            mkWordInfo
             (field "location" string)
             (field "transliteration" string)
             (field "translation" string)
@@ -34,24 +32,41 @@ decodeLocations =
         |> Decode.map Dict.fromList
 
 
+mkWordInfo : String -> String -> String -> String -> WordInfo
+mkWordInfo a b c d =
+    WordInfo (stringToLoc a) b c d
+
+
 decodeSurah : Decoder SurahData
 decodeSurah =
-    field "verse" (Decode.keyValuePairs string) |> Decode.map (map second) |> myDic
+    Decode.keyValuePairs string
+        |> field "verse"
+        |> Decode.map (map second)
+        |> Decode.map mkSurahData
 
 
-myDic : Decoder (List String) -> Decoder SurahData
-myDic deco =
-    Decode.map (\list -> Dict.insert tempSurahNumber (Array.fromList (drop 1 list)) Dict.empty) deco
+mkSurahData : List String -> SurahData
+mkSurahData listOfSurahRoots =
+    Dict.insert tempSurahNumber (formatSurahText listOfSurahRoots) Dict.empty
 
 
-toRoots : List ( String, List String ) -> List ( String, List Location )
-toRoots list =
-    map (\( s, l ) -> ( s, map toLocs l )) list
+formatSurahText : List String -> Array String
+formatSurahText =
+    dropBasmalah >> Array.fromList
 
 
-toLocs : String -> Location
-toLocs s =
-    dropLeft 1 s |> dropRight 1 |> split ":" |> map (toInt >> Maybe.withDefault 0) |> toTuple3
+dropBasmalah : List String -> List String
+dropBasmalah =
+    drop 1
+
+
+stringToLoc : String -> Location
+stringToLoc s =
+    dropLeft 1 s
+        |> dropRight 1
+        |> split ":"
+        |> map (toInt >> Maybe.withDefault 0)
+        |> toTuple3
 
 
 toTuple3 : List Int -> Location
@@ -85,7 +100,7 @@ wordsCmd : Cmd Msg
 wordsCmd =
     decodeLocations
         |> Http.get rootsToLocationsUrl
-        |> Http.send LoadWordLocations
+        |> Http.send LoadRootsData
 
 
 surahCmd : Cmd Msg
@@ -100,24 +115,30 @@ surahCmd =
 
 
 type alias Model =
-    { surahs : Dict Int (Array String), locationsWord : Surahs, wordsLocations : WordsLocations, known : Known, surahNumber : Int, activeRoot : Maybe ( String, Location ) }
+    { surahs : SurahData
+    , surahRoots : SurahRoots
+    , rootsData : RootsData
+    , known : Known
+    , surahNumber : Int
+    , activeWordDetails : Maybe ( String, Location )
+    }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { surahs = Dict.empty
-      , locationsWord = toRootsBySurah Dict.empty
-      , wordsLocations = Dict.empty
+      , surahRoots = SurahRoots Dict.empty
+      , rootsData = Dict.empty
       , known = Dict.empty
       , surahNumber = tempSurahNumber
-      , activeRoot = Nothing
+      , activeWordDetails = Nothing
       }
     , surahCmd
     )
 
 
-type Surahs
-    = Surahs (Dict Index Ayats)
+type SurahRoots
+    = SurahRoots (Dict Index Ayats)
 
 
 type Ayats
@@ -132,16 +153,16 @@ type alias SurahData =
     Dict Int (Array String)
 
 
-type alias WordsLocations =
-    Dict String (List WordInfo)
+type alias RootsData =
+    Dict Root (List WordInfo)
 
 
 type alias WordInfo =
     { location : Location, transliteration : String, translation : String, word : String }
 
 
-type Root
-    = Root String
+type alias Root =
+    String
 
 
 type alias Index =
@@ -156,37 +177,36 @@ type alias Known =
     Dict String ()
 
 
-wordToTokens : String -> Location -> Tokens -> Tokens
-wordToTokens root ( si, ai, wi ) (Tokens tokens) =
-    Tokens <| Dict.insert wi (Root root) tokens
-
-
-toRootsBySurah : WordsLocations -> Surahs
-toRootsBySurah words =
-    Dict.foldl
-        (\root locs dic ->
-            List.foldl (\wordInfo surahs -> addRoot (Root root) wordInfo.location surahs) dic locs
-        )
-        (Surahs Dict.empty)
-        words
-
-
-addRoot : Root -> Location -> Surahs -> Surahs
-addRoot (Root root) ( si, ai, wi ) (Surahs surahs) =
+rootsDataToSurahRoots : RootsData -> SurahRoots
+rootsDataToSurahRoots rootsData =
     let
-        newSurah : Surahs
+        stuff : Root -> List WordInfo -> SurahRoots -> SurahRoots
+        stuff root locs dic =
+            List.foldl (moreStuff root) dic locs
+
+        moreStuff : Root -> WordInfo -> SurahRoots -> SurahRoots
+        moreStuff root wordInfo surahs =
+            addRoot root wordInfo.location surahs
+    in
+    Dict.foldl stuff (SurahRoots Dict.empty) rootsData
+
+
+addRoot : Root -> Location -> SurahRoots -> SurahRoots
+addRoot root ( si, ai, wi ) (SurahRoots surahs) =
+    let
+        newSurah : SurahRoots
         newSurah =
-            Surahs (Dict.insert si (newAyat Dict.empty) surahs)
+            SurahRoots (Dict.insert si (newAyat Dict.empty) surahs)
 
         newAyat ayats =
             Ayats (Dict.insert ai (newToken Dict.empty) ayats)
 
         newToken tokens =
-            Tokens (Dict.insert wi (Root root) tokens)
+            Tokens (Dict.insert wi root tokens)
 
-        test : Dict Index Tokens -> Dict Index Root -> Ayats
-        test ayats tokens =
-            Ayats <| Dict.insert ai (newToken tokens) ayats
+        insert : Dict Index Tokens -> Dict Index Root -> Ayats
+        insert ayats tokens =
+            Ayats (Dict.insert ai (newToken tokens) ayats)
     in
     case Dict.get si surahs of
         Just (Ayats ayats) ->
@@ -194,20 +214,20 @@ addRoot (Root root) ( si, ai, wi ) (Surahs surahs) =
                 Just (Tokens tokens) ->
                     case Dict.get wi tokens of
                         Just _ ->
-                            Debug.log "word collison" (Surahs surahs)
+                            Debug.log "word collison" (SurahRoots surahs)
 
                         Nothing ->
-                            Surahs (Dict.insert si (test ayats tokens) surahs)
+                            SurahRoots (Dict.insert si (insert ayats tokens) surahs)
 
                 Nothing ->
-                    Surahs (Dict.insert si (newAyat ayats) surahs)
+                    SurahRoots (Dict.insert si (newAyat ayats) surahs)
 
         Nothing ->
             newSurah
 
 
-ayatsFrom : Index -> Surahs -> Ayats
-ayatsFrom index (Surahs surahs) =
+ayatsFrom : Index -> SurahRoots -> Ayats
+ayatsFrom index (SurahRoots surahs) =
     Dict.get index surahs |> Maybe.withDefault (Ayats Dict.empty)
 
 
@@ -219,7 +239,7 @@ tokensFrom index (Ayats ayats) =
 type Msg
     = SetKnown Root
     | LoadSurah (Result Http.Error SurahData)
-    | LoadWordLocations (Result Http.Error WordsLocations)
+    | LoadRootsData (Result Http.Error RootsData)
     | SetActiveRoot ( Root, Location )
 
 
@@ -229,14 +249,14 @@ update msg model =
         SetKnown root ->
             let
                 learn : Root -> Dict String () -> Dict String ()
-                learn (Root rootLetters) learned =
+                learn rootLetters learned =
                     Dict.insert rootLetters () learned
 
                 forget : Root -> Dict String () -> Dict String ()
-                forget (Root rootLetters) learned =
+                forget rootLetters learned =
                     Dict.remove rootLetters learned
             in
-            if root == Root "" then
+            if root == "" then
                 ( model, Cmd.none )
 
             else if isLearned root model.known then
@@ -245,12 +265,12 @@ update msg model =
             else
                 ( { model | known = learn root model.known }, Cmd.none )
 
-        SetActiveRoot ( Root root, loc ) ->
+        SetActiveRoot ( root, loc ) ->
             if root == "" then
-                ( { model | activeRoot = Nothing }, Cmd.none )
+                ( { model | activeWordDetails = Nothing }, Cmd.none )
 
             else
-                ( { model | activeRoot = Just ( root, loc ) }, Cmd.none )
+                ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
             ( { model | surahs = surahData }, wordsCmd )
@@ -258,10 +278,10 @@ update msg model =
         LoadSurah _ ->
             ( model, Cmd.none )
 
-        LoadWordLocations (Ok locations) ->
-            ( { model | locationsWord = toRootsBySurah locations, wordsLocations = locations }, Cmd.none )
+        LoadRootsData (Ok rootsData) ->
+            ( { model | surahRoots = rootsDataToSurahRoots rootsData, rootsData = rootsData }, Cmd.none )
 
-        LoadWordLocations _ ->
+        LoadRootsData _ ->
             ( model, Cmd.none )
 
 
@@ -269,7 +289,7 @@ viewSurah : Model -> Html Msg
 viewSurah model =
     let
         ayats =
-            ayatsFrom model.surahNumber model.locationsWord
+            ayatsFrom model.surahNumber model.surahRoots
     in
     Dict.get model.surahNumber model.surahs
         |> Maybe.withDefault Array.empty
@@ -323,7 +343,7 @@ viewWord model tokens ai ( wi, w ) =
             isLearned root model.known
 
         isLearnable =
-            root /= Root ""
+            root /= ""
     in
     span
         [ classList
@@ -339,11 +359,11 @@ view : Model -> Html Msg
 view model =
     div []
         [ viewOverlay model
-        , if model.activeRoot == Nothing then
+        , if model.activeWordDetails == Nothing then
             div [ class "content" ] [ viewSurah model ]
 
           else
-            div [ class "content", onClick (SetActiveRoot ( Root "", ( 0, 0, 0 ) )) ] [ viewSurah model ]
+            div [ class "content", onClick (SetActiveRoot ( "", ( 0, 0, 0 ) )) ] [ viewSurah model ]
         ]
 
 
@@ -354,7 +374,7 @@ indexBy1 =
 
 getRootFromWord : Index -> Tokens -> Root
 getRootFromWord index (Tokens token) =
-    Dict.get index token |> Maybe.withDefault (Root "")
+    Dict.get index token |> Maybe.withDefault ""
 
 
 viewLearnables : Model -> Html Msg
@@ -362,24 +382,24 @@ viewLearnables model =
     ul []
         (map
             (\w ->
-                viewLearnableWord (Root w) (isLearned (Root w) model.known)
+                viewLearnableWord w (isLearned w model.known)
             )
-            (Dict.keys model.wordsLocations)
+            (Dict.keys model.rootsData)
         )
 
 
 isLearned : Root -> Known -> Bool
-isLearned (Root root) known =
+isLearned root known =
     Dict.member root known
 
 
 viewLearnableWord : Root -> Bool -> Html Msg
-viewLearnableWord (Root root) learned =
+viewLearnableWord root learned =
     li []
         [ label []
             [ input
                 [ type_ "checkbox"
-                , onClick (SetKnown (Root root))
+                , onClick (SetKnown root)
                 , checked learned
                 ]
                 []
@@ -390,21 +410,21 @@ viewLearnableWord (Root root) learned =
 
 viewOverlay : Model -> Html Msg
 viewOverlay model =
-    case model.activeRoot of
+    case model.activeWordDetails of
         Just ( root, loc ) ->
             div [ id "drawer" ]
-                [ viewLearnableWord (Root root) (isLearned (Root root) model.known)
-                , viewSelectedWordInfo model.wordsLocations root loc
-                , viewOtherWordsWithSameRoot model.wordsLocations root loc
+                [ viewLearnableWord root (isLearned root model.known)
+                , viewSelectedWordInfo model.rootsData root loc
+                , viewOtherWordsWithSameRoot model.rootsData root loc
                 ]
 
         Nothing ->
             text ""
 
 
-viewSelectedWordInfo : WordsLocations -> String -> Location -> Html Msg
-viewSelectedWordInfo wordsLocations root location =
-    case Dict.get root wordsLocations of
+viewSelectedWordInfo : RootsData -> String -> Location -> Html Msg
+viewSelectedWordInfo rootsData root location =
+    case Dict.get root rootsData of
         Just wordsInfo ->
             div []
                 (wordsInfo
@@ -426,9 +446,9 @@ filterOutActiveWord location =
     filter (\wordInfo -> wordInfo.location /= location)
 
 
-viewOtherWordsWithSameRoot : WordsLocations -> String -> Location -> Html Msg
-viewOtherWordsWithSameRoot wordsLocations root location =
-    case Dict.get root wordsLocations of
+viewOtherWordsWithSameRoot : RootsData -> String -> Location -> Html Msg
+viewOtherWordsWithSameRoot rootsData root location =
+    case Dict.get root rootsData of
         Just wordsInfo ->
             div []
                 (wordsInfo
