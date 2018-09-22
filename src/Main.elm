@@ -226,21 +226,11 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
             newSurah
 
 
-ayatsFrom : Index -> SurahRoots -> Ayats
-ayatsFrom index (SurahRoots surahs) =
-    Dict.get index surahs |> Maybe.withDefault (Ayats Dict.empty)
-
-
-tokensFrom : Index -> Ayats -> Tokens
-tokensFrom index (Ayats ayats) =
-    Dict.get index ayats |> Maybe.withDefault (Tokens Dict.empty)
-
-
 type Msg
     = SetKnown Root
     | LoadSurah (Result Http.Error SurahData)
     | LoadRootsData (Result Http.Error RootsData)
-    | SetActiveRoot ( Root, Location )
+    | SetActiveDetails ( Root, Location )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -265,7 +255,7 @@ update msg model =
             else
                 ( { model | known = learn root model.known }, Cmd.none )
 
-        SetActiveRoot ( root, loc ) ->
+        SetActiveDetails ( root, loc ) ->
             if root == "" then
                 ( { model | activeWordDetails = Nothing }, Cmd.none )
 
@@ -285,59 +275,101 @@ update msg model =
             ( model, Cmd.none )
 
 
+view : Model -> Html Msg
+view model =
+    div []
+        [ viewOverlay model
+        , viewContent model
+        ]
+
+
+viewContent : Model -> Html Msg
+viewContent model =
+    if model.activeWordDetails == Nothing then
+        div [ class "content" ] [ viewSurah model ]
+
+    else
+        div [ class "content", onClick (SetActiveDetails ( "", ( 0, 0, 0 ) )) ] [ viewSurah model ]
+
+
 viewSurah : Model -> Html Msg
 viewSurah model =
-    let
-        ayats =
-            ayatsFrom model.surahNumber model.surahRoots
-    in
     Dict.get model.surahNumber model.surahs
         |> Maybe.withDefault Array.empty
         |> Array.toIndexedList
         |> indexBy1
-        |> map (viewAyat model ayats)
+        |> map (viewAyat model)
         |> div []
 
 
-viewAyat : Model -> Ayats -> ( Int, String ) -> Html Msg
-viewAyat model ayats ( ai, s ) =
+viewAyat : Model -> ( Int, String ) -> Html Msg
+viewAyat model ( ai, ayatString ) =
+    p [] (printAyat model ( ai, ayatString ) ++ [ printAyatNumber ai ])
+
+
+printAyat : Model -> ( Int, String ) -> List (Html Msg)
+printAyat model ( ai, ayatString ) =
     let
+        ayats : Ayats
+        ayats =
+            getAyatsRoots model.surahNumber model.surahRoots
+
+        tokens : Tokens
         tokens =
-            tokensFrom ai ayats
+            getTokenRoots ai ayats
 
-        joinYaa list =
-            List.foldr addWhenYaa [] list
-
-        addWhenYaa curr accum =
-            if curr == encode then
-                case accum of
-                    x :: xs ->
-                        (encode ++ " " ++ x) :: xs
-
-                    _ ->
-                        curr :: accum
-
-            else
-                curr :: accum
+        joinedYaa : List String -> List String
+        joinedYaa =
+            List.foldr addWhenYaa []
     in
-    p []
-        ((s
-            |> String.split " "
-            |> joinYaa
-            |> Array.fromList
-            |> Array.toIndexedList
-            |> indexBy1
-            |> map (viewWord model tokens ai)
-         )
-            ++ [ span [] [ text <| fromInt ai ] ]
-        )
+    ayatString
+        |> String.split " "
+        |> joinedYaa
+        |> Array.fromList
+        |> Array.toIndexedList
+        |> indexBy1
+        |> map (viewWord model tokens ai)
+
+
+printAyatNumber : Int -> Html Msg
+printAyatNumber ai =
+    span [] [ text (fromInt ai) ]
+
+
+getAyatsRoots : Index -> SurahRoots -> Ayats
+getAyatsRoots index (SurahRoots surahs) =
+    Dict.get index surahs |> Maybe.withDefault (Ayats Dict.empty)
+
+
+getTokenRoots : Index -> Ayats -> Tokens
+getTokenRoots index (Ayats ayats) =
+    Dict.get index ayats |> Maybe.withDefault (Tokens Dict.empty)
+
+
+addWhenYaa : String -> List String -> List String
+addWhenYaa curr accum =
+    if curr == encode then
+        case accum of
+            x :: xs ->
+                (encode ++ " " ++ x) :: xs
+
+            _ ->
+                curr :: accum
+
+    else
+        curr :: accum
+
+
+indexBy1 : List ( Int, String ) -> List ( Int, String )
+indexBy1 =
+    map (\( i, s ) -> ( i + 1, s ))
 
 
 viewWord : Model -> Tokens -> Int -> ( Int, String ) -> Html Msg
 viewWord model tokens ai ( wi, w ) =
     let
         root =
-            getRootFromWord wi tokens
+            getRootFromToken wi tokens
 
         isKnown =
             isLearned root model.known
@@ -350,30 +382,13 @@ viewWord model tokens ai ( wi, w ) =
             [ ( "known", isKnown )
             , ( "learnable", isLearnable )
             ]
-        , onClick (SetActiveRoot ( root, ( model.surahNumber, ai, wi ) ))
+        , onClick (SetActiveDetails ( root, ( model.surahNumber, ai, wi ) ))
         ]
         [ text (w ++ " " ++ "") ]
 
 
-view : Model -> Html Msg
-view model =
-    div []
-        [ viewOverlay model
-        , if model.activeWordDetails == Nothing then
-            div [ class "content" ] [ viewSurah model ]
-
-          else
-            div [ class "content", onClick (SetActiveRoot ( "", ( 0, 0, 0 ) )) ] [ viewSurah model ]
-        ]
-
-
-indexBy1 : List ( Int, String ) -> List ( Int, String )
-indexBy1 =
-    map (\( i, s ) -> ( i + 1, s ))
-
-
-getRootFromWord : Index -> Tokens -> Root
-getRootFromWord index (Tokens token) =
+getRootFromToken : Index -> Tokens -> Root
+getRootFromToken index (Tokens token) =
     Dict.get index token |> Maybe.withDefault ""
 
 
