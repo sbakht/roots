@@ -9,7 +9,7 @@ import Html.Attributes exposing (checked, class, classList, for, id, name, type_
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
-import List exposing (drop, filter, map)
+import List exposing (drop, filter, head, map)
 import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
 import Tuple exposing (first, mapFirst, mapSecond, second)
 
@@ -428,8 +428,8 @@ viewOverlay model =
     case model.activeWordDetails of
         Just ( root, loc ) ->
             div [ id "drawer" ]
-                [ viewLearnableWord root (isLearned root model.known)
-                , viewSelectedWordInfo model.rootsData root loc
+                [ viewSelectedWordInfo model.rootsData root loc
+                , viewLearnableWord root (isLearned root model.known)
                 , viewOtherWordsWithSameRoot model.rootsData root loc
                 ]
 
@@ -441,24 +441,32 @@ viewSelectedWordInfo : RootsData -> String -> Location -> Html Msg
 viewSelectedWordInfo rootsData root location =
     case Dict.get root rootsData of
         Just wordsInfo ->
-            div []
-                (wordsInfo
+            div [ id "active-word" ]
+                [ wordsInfo
                     |> filterToActiveWord location
-                    |> printAllWordsDetails
-                )
+                    |> printActiveWordDetails root
+                ]
 
         Nothing ->
             text ""
 
 
-filterToActiveWord : Location -> List WordInfo -> List WordInfo
+filterToActiveWord : Location -> List WordInfo -> Maybe WordInfo
 filterToActiveWord location =
-    filter (\wordInfo -> wordInfo.location == location)
+    head << filter (\wordInfo -> wordInfo.location == location)
 
 
-filterOutActiveWord : Location -> List WordInfo -> List WordInfo
-filterOutActiveWord location =
-    filter (\wordInfo -> wordInfo.location /= location)
+printActiveWordDetails : Root -> Maybe WordInfo -> Html Msg
+printActiveWordDetails root wordInfoM =
+    case wordInfoM of
+        Just wordInfo ->
+            div []
+                [ p [ id "drawer-word" ] [ text ("(" ++ wordInfo.word ++ " (" ++ root) ]
+                , p [ id "drawer-translation" ] [ text wordInfo.translation ]
+                ]
+
+        Nothing ->
+            text ""
 
 
 viewOtherWordsWithSameRoot : RootsData -> String -> Location -> Html Msg
@@ -468,21 +476,21 @@ viewOtherWordsWithSameRoot rootsData root location =
             div []
                 (wordsInfo
                     |> filterOutActiveWord location
-                    |> printAllWordsDetails
+                    |> map printWordDetails
                 )
 
         Nothing ->
             text ""
 
 
-printAllWordsDetails : List WordInfo -> List (Html Msg)
-printAllWordsDetails =
-    map printWordDetails
+filterOutActiveWord : Location -> List WordInfo -> List WordInfo
+filterOutActiveWord location =
+    filter (\wordInfo -> wordInfo.location /= location)
 
 
 printWordDetails : WordInfo -> Html Msg
 printWordDetails wordInfo =
-    div []
+    div [ class "other-words" ]
         [ span [] [ text (locationToString wordInfo.location) ]
         , span [] [ text wordInfo.translation ]
         , span [] [ text wordInfo.word ]
