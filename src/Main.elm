@@ -2,20 +2,43 @@ module Vocab exposing (main)
 
 import Array exposing (Array)
 import Browser
+import Browser.Navigation as Nav
 import Dict exposing (Dict)
 import EncodeString exposing (encode)
 import Html exposing (Html, a, div, input, label, li, p, span, text, ul)
-import Html.Attributes exposing (checked, class, classList, for, id, name, type_)
+import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
 import List exposing (drop, filter, head, map)
 import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
 import Tuple exposing (first, mapFirst, mapSecond, second)
+import Url
+import Url.Parser as UrlParser exposing (Parser, int, oneOf, parse, s, top)
 
 
 tempSurahNumber =
     36
+
+
+type Route
+    = SurahPage Int
+    | Null
+
+
+route : Parser (Route -> a) a
+route =
+    oneOf [ UrlParser.map Null top, UrlParser.map SurahPage int ]
+
+
+toRoute : String -> Route
+toRoute string =
+    case Url.fromString string of
+        Just url ->
+            Maybe.withDefault Null (parse route url)
+
+        Nothing ->
+            Null
 
 
 decodeLocations : Decoder RootsData
@@ -37,17 +60,17 @@ mkWordInfo a b c d =
     WordInfo (stringToLoc a) b c d
 
 
-decodeSurah : Decoder SurahData
-decodeSurah =
+decodeSurah : Int -> Decoder SurahData
+decodeSurah surahNum =
     Decode.keyValuePairs string
         |> field "verse"
         |> Decode.map (map second)
-        |> Decode.map mkSurahData
+        |> Decode.map (mkSurahData surahNum)
 
 
-mkSurahData : List String -> SurahData
-mkSurahData listOfSurahRoots =
-    Dict.insert tempSurahNumber (formatSurahText listOfSurahRoots) Dict.empty
+mkSurahData : Int -> List String -> SurahData
+mkSurahData surahNum listOfSurahRoots =
+    Dict.insert surahNum (formatSurahText listOfSurahRoots) Dict.empty
 
 
 formatSurahText : List String -> Array String
@@ -103,10 +126,10 @@ wordsCmd =
         |> Http.send LoadRootsData
 
 
-surahCmd : Cmd Msg
-surahCmd =
-    decodeSurah
-        |> Http.get (getSurahRequestUrl tempSurahNumber)
+surahCmd : Int -> Cmd Msg
+surahCmd surahNum =
+    decodeSurah surahNum
+        |> Http.get (getSurahRequestUrl surahNum)
         |> Http.send LoadSurah
 
 
@@ -115,7 +138,9 @@ surahCmd =
 
 
 type alias Model =
-    { surahs : SurahData
+    { key : Nav.Key
+    , url : Url.Url
+    , surahs : SurahData
     , surahRoots : SurahRoots
     , rootsData : RootsData
     , known : Known
@@ -124,16 +149,18 @@ type alias Model =
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
-    ( { surahs = Dict.empty
+init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init _ url key =
+    ( { key = key
+      , url = url
+      , surahs = Dict.empty
       , surahRoots = SurahRoots Dict.empty
       , rootsData = Dict.empty
       , known = Dict.empty
       , surahNumber = tempSurahNumber
       , activeWordDetails = Nothing
       }
-    , surahCmd
+    , surahCmd tempSurahNumber
     )
 
 
@@ -231,6 +258,9 @@ type Msg
     | LoadSurah (Result Http.Error SurahData)
     | LoadRootsData (Result Http.Error RootsData)
     | SetActiveDetails ( Root, Location )
+    | LinkClicked Browser.UrlRequest
+    | UrlChanged Url.Url
+    | RequestSurah Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -263,10 +293,14 @@ update msg model =
                 ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
-            ( { model | surahs = surahData }, wordsCmd )
+            if Dict.isEmpty model.rootsData then
+                ( { model | surahs = surahData }, wordsCmd )
+
+            else
+                ( { model | surahs = surahData }, Cmd.none )
 
         LoadSurah _ ->
-            ( model, Cmd.none )
+            ( model, wordsCmd )
 
         LoadRootsData (Ok rootsData) ->
             ( { model | surahRoots = rootsDataToSurahRoots rootsData, rootsData = rootsData }, Cmd.none )
@@ -274,13 +308,38 @@ update msg model =
         LoadRootsData _ ->
             ( model, Cmd.none )
 
+        LinkClicked urlRequest ->
+            case urlRequest of
+                Browser.Internal url ->
+                    ( model, Nav.pushUrl model.key (Url.toString url) )
 
-view : Model -> Html Msg
+                Browser.External href ->
+                    ( model, Nav.load href )
+
+        UrlChanged url ->
+            case toRoute (Url.toString url) of
+                SurahPage surahNum ->
+                    ( { model | surahNumber = surahNum }, surahCmd surahNum )
+
+                Null ->
+                    ( model, Cmd.none )
+
+        RequestSurah surahNum ->
+            ( { model | surahNumber = surahNum }, surahCmd surahNum )
+
+
+view : Model -> Browser.Document Msg
 view model =
-    div []
-        [ viewOverlay model
-        , viewContent model
+    { title = "Learn Quran Roots"
+    , body =
+        [ div []
+            [ a [ href "/1" ] [ text "load surah" ]
+            , a [ href "/2" ] [ text "load surah" ]
+            , viewOverlay model
+            , viewContent model
+            ]
         ]
+    }
 
 
 viewContent : Model -> Html Msg
@@ -463,6 +522,7 @@ printActiveWordDetails root wordInfoM =
             div []
                 [ p [ id "drawer-word" ] [ text ("(" ++ wordInfo.word ++ " (" ++ root) ]
                 , p [ id "drawer-translation" ] [ text wordInfo.translation ]
+                , p [ id "drawer-location" ] [ text (locationToString wordInfo.location) ]
                 ]
 
         Nothing ->
@@ -504,4 +564,11 @@ locationToString ( a, b, c ) =
 
 main : Program () Model Msg
 main =
-    Browser.element { init = init, view = view, update = update, subscriptions = \_ -> Sub.none }
+    Browser.application
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        , onUrlChange = UrlChanged
+        , onUrlRequest = LinkClicked
+        }
