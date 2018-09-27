@@ -60,17 +60,17 @@ mkWordInfo a b c d =
     WordInfo (stringToLoc a) b c d
 
 
-decodeSurah : Int -> Decoder SurahData
-decodeSurah surahNum =
+decodeSurah : Int -> SurahData -> Decoder SurahData
+decodeSurah surahNum surahData =
     Decode.keyValuePairs string
         |> field "verse"
         |> Decode.map (map second)
-        |> Decode.map (mkSurahData surahNum)
+        |> Decode.map (mkSurahData surahNum surahData)
 
 
-mkSurahData : Int -> List String -> SurahData
-mkSurahData surahNum listOfSurahRoots =
-    Dict.insert surahNum (formatSurahText listOfSurahRoots) Dict.empty
+mkSurahData : Int -> SurahData -> List String -> SurahData
+mkSurahData surahNum surahData listOfSurahRoots =
+    Dict.insert surahNum (formatSurahText listOfSurahRoots) surahData
 
 
 formatSurahText : List String -> Array String
@@ -126,9 +126,9 @@ wordsCmd =
         |> Http.send LoadRootsData
 
 
-surahCmd : Int -> Cmd Msg
-surahCmd surahNum =
-    decodeSurah surahNum
+surahCmd : Int -> SurahData -> Cmd Msg
+surahCmd surahNum surahData =
+    decodeSurah surahNum surahData
         |> Http.get (getSurahRequestUrl surahNum)
         |> Http.send LoadSurah
 
@@ -160,7 +160,7 @@ init _ url key =
       , surahNumber = tempSurahNumber
       , activeWordDetails = Nothing
       }
-    , surahCmd tempSurahNumber
+    , surahCmd tempSurahNumber Dict.empty
     )
 
 
@@ -260,7 +260,6 @@ type Msg
     | SetActiveDetails ( Root, Location )
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
-    | RequestSurah Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -319,13 +318,14 @@ update msg model =
         UrlChanged url ->
             case toRoute (Url.toString url) of
                 SurahPage surahNum ->
-                    ( { model | surahNumber = surahNum }, surahCmd surahNum )
+                    if Dict.member surahNum model.surahs then
+                        ( { model | surahNumber = surahNum }, Cmd.none )
+
+                    else
+                        ( { model | surahNumber = surahNum }, surahCmd surahNum model.surahs )
 
                 Null ->
                     ( model, Cmd.none )
-
-        RequestSurah surahNum ->
-            ( { model | surahNumber = surahNum }, surahCmd surahNum )
 
 
 view : Model -> Browser.Document Msg
