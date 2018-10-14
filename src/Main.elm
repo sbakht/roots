@@ -312,17 +312,22 @@ update msg model =
                 ( { model | activeWordDetails = Nothing }, Cmd.none )
 
             else
-                ( { model | activeWordDetails = Just ( root, loc ) }, scrollToWord)
+                ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none)
 
         LoadSurah (Ok surahData) ->
             if Dict.isEmpty model.rootsData then
                 ( { model | surahs = surahData }, wordsCmd )
 
             else
-                ( { model | surahs = surahData }, Cmd.none )
+                case model.activeWordDetails of
+                    Just (_, loc) ->
+                        ( { model | surahs = surahData }, scrollToWord loc)
+                    Nothing ->
+                        ( { model | surahs = surahData }, Cmd.none )
+
 
         LoadSurah _ ->
-            ( model, wordsCmd )
+            ( model, Cmd.none )
 
         LoadRootsData (Ok rootsData) ->
             ( { model | surahRoots = rootsDataToSurahRoots rootsData, rootsData = rootsData }, Cmd.none )
@@ -361,7 +366,16 @@ update msg model =
                             getRootFromToken wi tokens
                     in
                     if Dict.member surahNum model.surahs then
-                        ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, Cmd.none )
+                        if surahNum == model.surahNumber then
+                            case model.activeWordDetails of
+                                Just _ ->
+                                    ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, scrollToWord (surahNum, ai, wi) )
+
+                                Nothing ->
+                                    ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, Cmd.none )
+                        else
+                            ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, scrollToWord (surahNum, ai, wi) )
+
 
                     else
                         ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, surahCmd surahNum model.surahs )
@@ -606,9 +620,9 @@ locationToUrl ( a, b, c ) =
     absolute (map fromInt [ a, b, c ]) []
 
 
-scrollToWord : Cmd Msg
-scrollToWord =
-    Dom.getElement "/36/70/3"
+scrollToWord : Location -> Cmd Msg
+scrollToWord loc =
+    Dom.getElement (locationToUrl loc)
     |> Task.andThen (\info -> Dom.setViewport 0 info.element.y)
 --    |>  Dom.getViewportOf id
 --      |> Task.andThen (\info -> Dom.setViewportOf id 0 info.scene.height)
