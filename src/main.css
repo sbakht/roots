@@ -1,9 +1,6 @@
-<html>
-<head>
-  <style>
     /* you can style your program here */
     .known {
-      color: blue !important; 
+      color: blue !important;
       font-weight:bold;
     }
     .learnable {
@@ -29,7 +26,7 @@
     }
 
     #drawer-root {
-      font-size: 35px; 
+      font-size: 35px;
       text-align: center;
     }
 
@@ -53,16 +50,4 @@
     label, input {
       cursor: pointer;
     }
-
-  </style>
-</head>
-<body>
-  <main></main>
-  <script src="elm.js"></script>
-  <script>
-    var app = Elm.Vocab.init();
-    // you can use ports and stuff here
-  </script>
-</body>
-</html>
 

@@ -1,8 +1,10 @@
-module Vocab exposing (main)
+module Main exposing (main)
 
 import Array exposing (Array)
 import Browser
+import Task
 import Browser.Navigation as Nav
+import Browser.Dom as Dom
 import Dict exposing (Dict)
 import EncodeString exposing (encode)
 import Html exposing (Html, a, div, input, label, li, p, span, text, ul)
@@ -14,7 +16,21 @@ import List exposing (drop, filter, head, map)
 import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
 import Tuple exposing (first, mapFirst, mapSecond, second)
 import Url
-import Url.Parser as UrlParser exposing (Parser, int, oneOf, parse, s, top)
+import Url.Builder exposing (absolute)
+import Url.Parser as UrlParser exposing ((</>), Parser, int, oneOf, parse, s, top)
+
+
+
+{-
+   scroll drawer to top on click
+   scroll to ayat on page load
+   basmalah is ayat on first surah
+   find surah without basmalah
+   ayats with star end messed up data
+   get more data
+   dropdown select surah
+   server load index.html
+-}
 
 
 tempSurahNumber =
@@ -23,12 +39,17 @@ tempSurahNumber =
 
 type Route
     = SurahPage Int
+    | RootModal Location
     | Null
 
 
 route : Parser (Route -> a) a
 route =
-    oneOf [ UrlParser.map Null top, UrlParser.map SurahPage int ]
+    oneOf
+        [ UrlParser.map Null top
+        , UrlParser.map SurahPage int
+        , UrlParser.map (\a b c -> RootModal ( a, b, c )) (int </> int </> int)
+        ]
 
 
 toRoute : String -> Route
@@ -191,7 +212,6 @@ type alias WordInfo =
 type alias Root =
     String
 
-
 type alias Index =
     Int
 
@@ -260,11 +280,14 @@ type Msg
     | SetActiveDetails ( Root, Location )
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
+    | NoOp
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NoOp ->
+            (model, Cmd.none)
         SetKnown root ->
             let
                 learn : Root -> Dict String () -> Dict String ()
@@ -289,7 +312,7 @@ update msg model =
                 ( { model | activeWordDetails = Nothing }, Cmd.none )
 
             else
-                ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none )
+                ( { model | activeWordDetails = Just ( root, loc ) }, scrollToWord)
 
         LoadSurah (Ok surahData) ->
             if Dict.isEmpty model.rootsData then
@@ -324,6 +347,25 @@ update msg model =
                     else
                         ( { model | surahNumber = surahNum }, surahCmd surahNum model.surahs )
 
+                RootModal ( surahNum, ai, wi ) ->
+                    let
+                        ayats : Ayats
+                        ayats =
+                            getAyatsRoots surahNum model.surahRoots
+
+                        tokens : Tokens
+                        tokens =
+                            getTokenRoots ai ayats
+
+                        root =
+                            getRootFromToken wi tokens
+                    in
+                    if Dict.member surahNum model.surahs then
+                        ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, Cmd.none )
+
+                    else
+                        ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, surahCmd surahNum model.surahs )
+
                 Null ->
                     ( model, Cmd.none )
 
@@ -344,11 +386,7 @@ view model =
 
 viewContent : Model -> Html Msg
 viewContent model =
-    if model.activeWordDetails == Nothing then
-        div [ class "content" ] [ viewSurah model ]
-
-    else
-        div [ class "content", onClick (SetActiveDetails ( "", ( 0, 0, 0 ) )) ] [ viewSurah model ]
+    div [ class "content" ] [ viewSurah model ]
 
 
 viewSurah : Model -> Html Msg
@@ -436,12 +474,13 @@ viewWord model tokens ai ( wi, w ) =
         isLearnable =
             root /= ""
     in
-    span
+    a
         [ classList
             [ ( "known", isKnown )
             , ( "learnable", isLearnable )
             ]
-        , onClick (SetActiveDetails ( root, ( model.surahNumber, ai, wi ) ))
+            , id (locationToUrl ( model.surahNumber, ai, wi ))
+        , href (locationToUrl ( model.surahNumber, ai, wi ))
         ]
         [ text (w ++ " " ++ "") ]
 
@@ -551,7 +590,7 @@ filterOutActiveWord location =
 printWordDetails : WordInfo -> Html Msg
 printWordDetails wordInfo =
     div [ class "other-words" ]
-        [ span [] [ text (locationToString wordInfo.location) ]
+        [ a [ href (locationToUrl wordInfo.location) ] [ text (locationToString wordInfo.location) ]
         , span [] [ text wordInfo.translation ]
         , span [] [ text wordInfo.word ]
         ]
@@ -560,6 +599,21 @@ printWordDetails wordInfo =
 locationToString : Location -> String
 locationToString ( a, b, c ) =
     fromInt a ++ ":" ++ fromInt b ++ ":" ++ fromInt c
+
+
+locationToUrl : Location -> String
+locationToUrl ( a, b, c ) =
+    absolute (map fromInt [ a, b, c ]) []
+
+
+scrollToWord : Cmd Msg
+scrollToWord =
+    Dom.getElement "/36/70/3"
+    |> Task.andThen (\info -> Dom.setViewport 0 info.element.y)
+--    |>  Dom.getViewportOf id
+--      |> Task.andThen (\info -> Dom.setViewportOf id 0 info.scene.height)
+    |> Task.attempt (\_ -> NoOp)
+--  Task.perform (\_ -> NoOp) (Dom.setViewport 0 0)
 
 
 main : Program () Model Msg
