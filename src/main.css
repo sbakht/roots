@@ -1,4 +1,12 @@
     /* you can style your program here */
+
+    .content {
+        font-size:22px;
+    }
+    a {
+      color: black;
+      text-decoration: none;
+    }
     .known {
       color: blue !important;
       font-weight:bold;

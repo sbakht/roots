@@ -367,12 +367,7 @@ update msg model =
                     in
                     if Dict.member surahNum model.surahs then
                         if surahNum == model.surahNumber then
-                            case model.activeWordDetails of
-                                Just _ ->
-                                    ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, scrollToWord (surahNum, ai, wi) )
-
-                                Nothing ->
-                                    ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, Cmd.none )
+                            ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, Cmd.none )
                         else
                             ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, scrollToWord (surahNum, ai, wi) )
 
@@ -487,16 +482,24 @@ viewWord model tokens ai ( wi, w ) =
 
         isLearnable =
             root /= ""
+
+        path = locationToUrl ( model.surahNumber, ai, wi )
+
     in
-    a
-        [ classList
-            [ ( "known", isKnown )
-            , ( "learnable", isLearnable )
+     if isLearnable == True then
+        a
+            [ classList
+                [ ( "known", isKnown )
+                , ( "learnable", isLearnable )
+                ]
+                , id path
+            , href path
             ]
-            , id (locationToUrl ( model.surahNumber, ai, wi ))
-        , href (locationToUrl ( model.surahNumber, ai, wi ))
-        ]
-        [ text (w ++ " " ++ "") ]
+            [ text (w ++ " " ++ "") ]
+     else
+        span
+            [  id path ]
+            [ text (w ++ " " ++ "") ]
 
 
 getRootFromToken : Index -> Tokens -> Root
@@ -623,7 +626,7 @@ locationToUrl ( a, b, c ) =
 scrollToWord : Location -> Cmd Msg
 scrollToWord loc =
     Dom.getElement (locationToUrl loc)
-    |> Task.andThen (\info -> Dom.setViewport 0 info.element.y)
+    |> Task.andThen (\info -> Dom.setViewport 0 (info.element.y - (info.viewport.height / 2)))
 --    |>  Dom.getViewportOf id
 --      |> Task.andThen (\info -> Dom.setViewportOf id 0 info.scene.height)
     |> Task.attempt (\_ -> NoOp)
