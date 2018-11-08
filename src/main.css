@@ -3,18 +3,24 @@
     .content {
         font-size:22px;
     }
+
     a {
       color: black;
       text-decoration: none;
     }
-    .known {
-      color: blue !important;
-      font-weight:bold;
+
+    .word {
+
     }
+
     .learnable {
       color: red;
-      font-weight:bold;
       cursor: pointer;
+    }
+
+    .known {
+      color: blue;
+      font-weight: bold;
     }
 
     #drawer {

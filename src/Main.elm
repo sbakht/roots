@@ -454,10 +454,11 @@ getTokenRoots index (Ayats ayats) =
 
 addWhenYaa : String -> List String -> List String
 addWhenYaa curr accum =
-    if curr == encode then
+--    if curr == encode then
+    if List.member curr encode then
         case accum of
             x :: xs ->
-                (encode ++ " " ++ x) :: xs
+                (curr ++ " " ++ x) :: xs
 
             _ ->
                 curr :: accum
@@ -491,6 +492,7 @@ viewWord model tokens ai ( wi, w ) =
             [ classList
                 [ ( "known", isKnown )
                 , ( "learnable", isLearnable )
+                , ("word", True)
                 ]
                 , id path
             , href path
@@ -498,7 +500,7 @@ viewWord model tokens ai ( wi, w ) =
             [ text (w ++ " " ++ "") ]
      else
         span
-            [  id path ]
+            [  class "word", id path ]
             [ text (w ++ " " ++ "") ]
 
 
