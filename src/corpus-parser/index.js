@@ -10,7 +10,7 @@ let captureRoots;
 app.get('/scrape', function(req, res) {
     let pageRoots = req.param("roots");
     fs.readFile('output.json', 'utf8', function(err, input) {
-        let json = JSON.parse(input);
+        let json = JSON.parse(input || '{}');
         let rootList;
         request({
             url: baseUrl,
@@ -19,7 +19,7 @@ app.get('/scrape', function(req, res) {
             console.log('Fetching base ' + baseUrl + pageRoots);
             if (!error) {
                 var $ = cheerio.load(html);
-                addRootData($, json, pageRoots);
+                // addRootData($, json, pageRoots);
                 rootList = getRootList($);
                 captureRoots = rootList.filter((root) => {
                     return !json[root.arabic];
