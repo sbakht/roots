@@ -261,7 +261,7 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
                 Just (Tokens tokens) ->
                     case Dict.get wi tokens of
                         Just _ ->
-                            Debug.log "word collison" (SurahRoots surahs)
+                            (SurahRoots surahs)
 
                         Nothing ->
                             SurahRoots (Dict.insert si (insert ayats tokens) surahs)
