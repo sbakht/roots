@@ -2,10 +2,12 @@ module Main exposing (main)
 
 import Array exposing (Array)
 import Browser
-import Task
-import Browser.Navigation as Nav
 import Browser.Dom as Dom
+import Browser.Navigation as Nav
 import Dict exposing (Dict)
+import Element exposing (Attr, Element, column, el, fill, fillPortion, height, link, none, row, width)
+import Element.Font as Font
+import Element.Input as Input
 import EncodeString exposing (encode)
 import Html exposing (Html, a, div, input, label, li, p, span, text, ul)
 import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_)
@@ -14,6 +16,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
 import List exposing (drop, filter, head, map)
 import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
+import Task
 import Tuple exposing (first, mapFirst, mapSecond, second)
 import Url
 import Url.Builder exposing (absolute)
@@ -212,6 +215,7 @@ type alias WordInfo =
 type alias Root =
     String
 
+
 type alias Index =
     Int
 
@@ -261,7 +265,7 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
                 Just (Tokens tokens) ->
                     case Dict.get wi tokens of
                         Just _ ->
-                            (SurahRoots surahs)
+                            SurahRoots surahs
 
                         Nothing ->
                             SurahRoots (Dict.insert si (insert ayats tokens) surahs)
@@ -274,7 +278,7 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
 
 
 type Msg
-    = SetKnown Root
+    = SetKnown Root Bool
     | LoadSurah (Result Http.Error SurahData)
     | LoadRootsData (Result Http.Error RootsData)
     | SetActiveDetails ( Root, Location )
@@ -287,8 +291,9 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         NoOp ->
-            (model, Cmd.none)
-        SetKnown root ->
+            ( model, Cmd.none )
+
+        SetKnown root isKnown ->
             let
                 learn : Root -> Dict String () -> Dict String ()
                 learn rootLetters learned =
@@ -312,7 +317,7 @@ update msg model =
                 ( { model | activeWordDetails = Nothing }, Cmd.none )
 
             else
-                ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none)
+                ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
             if Dict.isEmpty model.rootsData then
@@ -320,11 +325,11 @@ update msg model =
 
             else
                 case model.activeWordDetails of
-                    Just (_, loc) ->
-                        ( { model | surahs = surahData }, scrollToWord loc)
+                    Just ( _, loc ) ->
+                        ( { model | surahs = surahData }, scrollToWord loc )
+
                     Nothing ->
                         ( { model | surahs = surahData }, Cmd.none )
-
 
         LoadSurah _ ->
             ( model, Cmd.none )
@@ -368,9 +373,9 @@ update msg model =
                     if Dict.member surahNum model.surahs then
                         if surahNum == model.surahNumber then
                             ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, Cmd.none )
-                        else
-                            ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, scrollToWord (surahNum, ai, wi) )
 
+                        else
+                            ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, scrollToWord ( surahNum, ai, wi ) )
 
                     else
                         ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, surahCmd surahNum model.surahs )
@@ -379,41 +384,50 @@ update msg model =
                     ( model, Cmd.none )
 
 
+overlaySize =
+    1
+
+
+surahSize =
+    5
+
+
 view : Model -> Browser.Document Msg
 view model =
     { title = "Learn Quran Roots"
     , body =
-        [ div []
-            [ a [ href "/1" ] [ text "load surah" ]
-            , a [ href "/2" ] [ text "load surah" ]
-            , viewOverlay model
-            , viewContent model
-            ]
+        [ Element.layout [] <|
+            row [ height fill, width fill ]
+                [ viewOverlay model
+                , viewSurah model
+                ]
         ]
     }
 
 
-viewContent : Model -> Html Msg
-viewContent model =
-    div [ class "content" ] [ viewSurah model ]
+
+--viewContent : Model -> Html Msg
+--viewContent model =
+--    div [ class "content" ] [ viewSurah model ]
 
 
-viewSurah : Model -> Html Msg
+viewSurah : Model -> Element Msg
 viewSurah model =
-    Dict.get model.surahNumber model.surahs
-        |> Maybe.withDefault Array.empty
-        |> Array.toIndexedList
-        |> indexBy1
-        |> map (viewAyat model)
-        |> div []
+    column [ height fill, width <| fillPortion surahSize ]
+        (Dict.get model.surahNumber model.surahs
+            |> Maybe.withDefault Array.empty
+            |> Array.toIndexedList
+            |> indexBy1
+            |> map (viewAyat model)
+        )
 
 
-viewAyat : Model -> ( Int, String ) -> Html Msg
+viewAyat : Model -> ( Int, String ) -> Element Msg
 viewAyat model ( ai, ayatString ) =
-    p [] (printAyat model ( ai, ayatString ) ++ [ printAyatNumber ai ])
+    Element.paragraph [] (printAyat model ( ai, ayatString ) ++ [ printAyatNumber ai ])
 
 
-printAyat : Model -> ( Int, String ) -> List (Html Msg)
+printAyat : Model -> ( Int, String ) -> List (Element Msg)
 printAyat model ( ai, ayatString ) =
     let
         ayats : Ayats
@@ -437,9 +451,9 @@ printAyat model ( ai, ayatString ) =
         |> map (viewWord model tokens ai)
 
 
-printAyatNumber : Int -> Html Msg
+printAyatNumber : Int -> Element Msg
 printAyatNumber ai =
-    span [] [ text (fromInt ai) ]
+    el [] <| Element.text (fromInt ai)
 
 
 getAyatsRoots : Index -> SurahRoots -> Ayats
@@ -454,7 +468,7 @@ getTokenRoots index (Ayats ayats) =
 
 addWhenYaa : String -> List String -> List String
 addWhenYaa curr accum =
---    if curr == encode then
+    --    if curr == encode then
     if List.member curr encode then
         case accum of
             x :: xs ->
@@ -472,7 +486,20 @@ indexBy1 =
     map (\( i, s ) -> ( i + 1, s ))
 
 
-viewWord : Model -> Tokens -> Int -> ( Int, String ) -> Html Msg
+wordColor : Bool -> Bool -> Attr decorative Msg
+wordColor isKnown isLearnable =
+    case ( isKnown, isLearnable ) of
+        ( True, _ ) ->
+            Font.color <| Element.rgb 0 0 255
+
+        ( _, True ) ->
+            Font.color <| Element.rgb 255 0 0
+
+        ( _, _ ) ->
+            Font.color <| Element.rgb 0 0 0
+
+
+viewWord : Model -> Tokens -> Int -> ( Int, String ) -> Element Msg
 viewWord model tokens ai ( wi, w ) =
     let
         root =
@@ -484,24 +511,17 @@ viewWord model tokens ai ( wi, w ) =
         isLearnable =
             root /= ""
 
-        path = locationToUrl ( model.surahNumber, ai, wi )
-
+        path =
+            locationToUrl ( model.surahNumber, ai, wi )
     in
-     if isLearnable == True then
-        a
-            [ classList
-                [ ( "known", isKnown )
-                , ( "learnable", isLearnable )
-                , ("word", True)
-                ]
-                , id path
-            , href path
-            ]
-            [ text (w ++ " " ++ "") ]
-     else
-        span
-            [  class "word", id path ]
-            [ text (w ++ " " ++ "") ]
+    if isLearnable == True then
+        Element.link
+            [ wordColor isKnown isLearnable ]
+        <|
+            { url = path, label = Element.text (w ++ " " ++ "") }
+
+    else
+        el [] <| Element.text (w ++ " " ++ "")
 
 
 getRootFromToken : Index -> Tokens -> Root
@@ -509,63 +529,48 @@ getRootFromToken index (Tokens token) =
     Dict.get index token |> Maybe.withDefault ""
 
 
-viewLearnables : Model -> Html Msg
-viewLearnables model =
-    ul []
-        (map
-            (\w ->
-                viewLearnableWord w (isLearned w model.known)
-            )
-            (Dict.keys model.rootsData)
-        )
-
-
 isLearned : Root -> Known -> Bool
 isLearned root known =
     Dict.member root known
 
 
-viewLearnableWord : Root -> Bool -> Html Msg
+viewLearnableWord : Root -> Bool -> Element Msg
 viewLearnableWord root learned =
-    li []
-        [ label []
-            [ input
-                [ type_ "checkbox"
-                , onClick (SetKnown root)
-                , checked learned
-                ]
-                []
-            , text root
-            ]
-        ]
+    Input.checkbox []
+        { onChange = SetKnown root
+        , icon = \_ -> none
+        , checked = learned
+        , label = Input.labelRight [] (Element.text root)
+        }
 
 
-viewOverlay : Model -> Html Msg
+viewOverlay : Model -> Element Msg
 viewOverlay model =
     case model.activeWordDetails of
         Just ( root, loc ) ->
-            div [ id "drawer" ]
+            --            column [ id "drawer" ]
+            column [ height fill, width <| fillPortion overlaySize ]
                 [ viewSelectedWordInfo model.rootsData root loc
                 , viewLearnableWord root (isLearned root model.known)
                 , viewOtherWordsWithSameRoot model.rootsData root loc
                 ]
 
         Nothing ->
-            text ""
+            Element.none
 
 
-viewSelectedWordInfo : RootsData -> String -> Location -> Html Msg
+viewSelectedWordInfo : RootsData -> String -> Location -> Element Msg
 viewSelectedWordInfo rootsData root location =
     case Dict.get root rootsData of
         Just wordsInfo ->
-            div [ id "active-word" ]
+            row []
                 [ wordsInfo
                     |> filterToActiveWord location
                     |> printActiveWordDetails root
                 ]
 
         Nothing ->
-            text ""
+            none
 
 
 filterToActiveWord : Location -> List WordInfo -> Maybe WordInfo
@@ -573,32 +578,36 @@ filterToActiveWord location =
     head << filter (\wordInfo -> wordInfo.location == location)
 
 
-printActiveWordDetails : Root -> Maybe WordInfo -> Html Msg
+printActiveWordDetails : Root -> Maybe WordInfo -> Element Msg
 printActiveWordDetails root wordInfoM =
     case wordInfoM of
         Just wordInfo ->
-            div []
-                [ p [ id "drawer-word" ] [ text ("(" ++ wordInfo.word ++ " (" ++ root) ]
-                , p [ id "drawer-translation" ] [ text wordInfo.translation ]
-                , p [ id "drawer-location" ] [ text (locationToString wordInfo.location) ]
+            column []
+                --                [ el [ id "drawer-word" ] [ text ("(" ++ wordInfo.word ++ " (" ++ root) ]
+                --                , el [ id "drawer-translation" ] [ text wordInfo.translation ]
+                --                , el [ id "drawer-location" ] [ text (locationToString wordInfo.location) ]
+                --                ]
+                [ el [] <| Element.text ("(" ++ wordInfo.word ++ " (" ++ root)
+                , el [] <| Element.text wordInfo.translation
+                , el [] <| Element.text (locationToString wordInfo.location)
                 ]
 
         Nothing ->
-            text ""
+            none
 
 
-viewOtherWordsWithSameRoot : RootsData -> String -> Location -> Html Msg
+viewOtherWordsWithSameRoot : RootsData -> String -> Location -> Element Msg
 viewOtherWordsWithSameRoot rootsData root location =
     case Dict.get root rootsData of
         Just wordsInfo ->
-            div []
+            column []
                 (wordsInfo
                     |> filterOutActiveWord location
                     |> map printWordDetails
                 )
 
         Nothing ->
-            text ""
+            none
 
 
 filterOutActiveWord : Location -> List WordInfo -> List WordInfo
@@ -606,12 +615,15 @@ filterOutActiveWord location =
     filter (\wordInfo -> wordInfo.location /= location)
 
 
-printWordDetails : WordInfo -> Html Msg
+printWordDetails : WordInfo -> Element Msg
 printWordDetails wordInfo =
-    div [ class "other-words" ]
-        [ a [ href (locationToUrl wordInfo.location) ] [ text (locationToString wordInfo.location) ]
-        , span [] [ text wordInfo.translation ]
-        , span [] [ text wordInfo.word ]
+    row []
+        [ link []
+            { url = locationToUrl wordInfo.location
+            , label = Element.text <| locationToString wordInfo.location
+            }
+        , el [] <| Element.text wordInfo.translation
+        , el [] <| Element.text wordInfo.word
         ]
 
 
@@ -628,10 +640,13 @@ locationToUrl ( a, b, c ) =
 scrollToWord : Location -> Cmd Msg
 scrollToWord loc =
     Dom.getElement (locationToUrl loc)
-    |> Task.andThen (\info -> Dom.setViewport 0 (info.element.y - (info.viewport.height / 2)))
---    |>  Dom.getViewportOf id
---      |> Task.andThen (\info -> Dom.setViewportOf id 0 info.scene.height)
-    |> Task.attempt (\_ -> NoOp)
+        |> Task.andThen (\info -> Dom.setViewport 0 (info.element.y - (info.viewport.height / 2)))
+        --    |>  Dom.getViewportOf id
+        --      |> Task.andThen (\info -> Dom.setViewportOf id 0 info.scene.height)
+        |> Task.attempt (\_ -> NoOp)
+
+
+
 --  Task.perform (\_ -> NoOp) (Dom.setViewport 0 0)
 
 
