@@ -13,8 +13,8 @@ import Html.Attributes exposing (checked, class, classList, for, href, id, name,
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
-import List exposing (drop, filter, head, map)
-import String exposing (dropLeft, dropRight, fromChar, fromInt, split, toInt)
+import List exposing (drop, filter, head, length, map)
+import String exposing (dropLeft, dropRight, fromChar, fromFloat, fromInt, split, toInt)
 import Task
 import Tuple exposing (first, mapFirst, mapSecond, second)
 import Url
@@ -390,8 +390,13 @@ overlaySize =
 surahSize =
     5
 
-englishFontSize = Font.size 14
-arabicFontSize = Font.size 30
+
+englishFontSize =
+    Font.size 14
+
+
+arabicFontSize =
+    Font.size 30
 
 
 view : Model -> Browser.Document Msg
@@ -399,18 +404,42 @@ view model =
     { title = "Learn Quran Roots"
     , body =
         [ Element.layout [] <|
-            row [ height fill, width fill, paddingXY 10 10, spacingXY 10 0, englishFontSize ]
-                [ viewOverlay model
-                , viewSurah model
+            column []
+                [ viewHeader model
+                , row [ height fill, width fill, paddingXY 10 10, spacingXY 10 0, englishFontSize ]
+                    [ viewOverlay model
+                    , viewSurah model
+                    ]
                 ]
         ]
     }
 
 
+viewHeader : Model -> Element Msg
+viewHeader model =
+    let
+        totalWords =
+            Dict.foldl (\_ v accum -> length v + accum) 0 model.rootsData
 
---viewContent : Model -> Html Msg
---viewContent model =
---    div [ class "content" ] [ viewSurah model ]
+        totalOccurrences root =
+            Dict.get root model.rootsData
+                |> Maybe.withDefault []
+                |> length
+
+        totalKnown =
+            Dict.foldr (\root _ accum -> totalOccurrences root + accum) 0 model.known
+
+        percentage =
+            toFloat totalKnown
+                / toFloat totalWords
+                * 10000
+                |> floor
+                |> toFloat
+                |> (\x -> x / 100)
+    in
+    row [ width fill, Font.color <| rgb 0 255 0 ] <|
+        [ el [ alignRight ] <| text (fromFloat percentage ++ "%")
+        ]
 
 
 viewSurah : Model -> Element Msg
@@ -426,7 +455,7 @@ viewSurah model =
 
 viewAyat : Model -> ( Int, String ) -> Element Msg
 viewAyat model ( ai, ayatString ) =
-    row [spacing 5] [  printAyatNumber ai,  printAyat model ( ai, ayatString )]
+    row [ spacing 5 ] [ printAyatNumber ai, printAyat model ( ai, ayatString ) ]
 
 
 printAyat : Model -> ( Int, String ) -> Element Msg
@@ -451,7 +480,7 @@ printAyat model ( ai, ayatString ) =
         |> Array.toIndexedList
         |> indexBy1
         |> map (viewWord model tokens ai)
-        |> Element.paragraph [arabicFontSize]
+        |> Element.paragraph [ arabicFontSize ]
 
 
 printAyatNumber : Int -> Element Msg
@@ -539,10 +568,16 @@ isLearned root known =
 
 viewLearnableWord : Root -> Bool -> Element Msg
 viewLearnableWord root learned =
-    el [centerX] <|
+    el [ centerX ] <|
         Input.checkbox []
             { onChange = SetKnown root
-            , icon = \checked -> if checked then text "YES" else text "NO"
+            , icon =
+                \checked ->
+                    if checked then
+                        text "YES"
+
+                    else
+                        text "NO"
             , checked = learned
             , label = Input.labelRight [] (text "Learned")
             }
@@ -552,7 +587,7 @@ viewOverlay : Model -> Element Msg
 viewOverlay model =
     case model.activeWordDetails of
         Just ( root, loc ) ->
-            column [ height fill, width <| fillPortion overlaySize]
+            column [ height fill, width <| fillPortion overlaySize ]
                 [ viewSelectedWordInfo model.rootsData root loc
                 , viewLearnableWord root (isLearned root model.known)
                 , viewOtherWordsWithSameRoot model.rootsData root loc
@@ -569,37 +604,34 @@ viewSelectedWordInfo rootsData root location =
         filterToActiveWord =
             head << filter (\wordInfo -> wordInfo.location == location)
 
-
         printActiveWordDetails : Maybe WordInfo -> Element Msg
         printActiveWordDetails wordInfoM =
             case wordInfoM of
                 Just wordInfo ->
-                    column [width fill]
-                        [ el [arabicFontSize, centerX] <| text ("(" ++ wordInfo.word ++ " (" ++ root)
-                        , el [centerX] <| text wordInfo.translation
-                        , el [centerX] <| text (locationToString wordInfo.location)
+                    column [ width fill ]
+                        [ el [ arabicFontSize, centerX ] <| text ("(" ++ wordInfo.word ++ " (" ++ root)
+                        , el [ centerX ] <| text wordInfo.translation
+                        , el [ centerX ] <| text (locationToString wordInfo.location)
                         ]
 
                 Nothing ->
                     none
     in
-        case Dict.get root rootsData of
-            Just wordsInfo ->
-                     wordsInfo
-                        |> filterToActiveWord
-                        |> printActiveWordDetails
+    case Dict.get root rootsData of
+        Just wordsInfo ->
+            wordsInfo
+                |> filterToActiveWord
+                |> printActiveWordDetails
 
-            Nothing ->
-                none
-
-
+        Nothing ->
+            none
 
 
 viewOtherWordsWithSameRoot : RootsData -> String -> Location -> Element Msg
 viewOtherWordsWithSameRoot rootsData root location =
     case Dict.get root rootsData of
         Just wordsInfo ->
-            column [width fill]
+            column [ width fill ]
                 (wordsInfo
                     |> filterOutActiveWord location
                     |> map printWordDetails
@@ -616,13 +648,13 @@ filterOutActiveWord location =
 
 printWordDetails : WordInfo -> Element Msg
 printWordDetails wordInfo =
-    row [width fill]
-        [ link [Font.color <| rgb 0 0 255]
+    row [ width fill ]
+        [ link [ Font.color <| rgb 0 0 255 ]
             { url = locationToUrl wordInfo.location
             , label = text <| locationToString wordInfo.location
             }
-        , el [ centerX] <| text wordInfo.translation
-        , el [ alignRight, arabicFontSize] <| text wordInfo.word
+        , el [ centerX ] <| text wordInfo.translation
+        , el [ alignRight, arabicFontSize ] <| text wordInfo.word
         ]
 
 
