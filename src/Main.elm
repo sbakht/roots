@@ -437,8 +437,12 @@ viewHeader model =
                 |> toFloat
                 |> (\x -> x / 100)
     in
-    row [ width fill, Font.color <| rgb 0 255 0 ] <|
-        [ el [ alignRight ] <| text (fromFloat percentage ++ "%")
+    row [ width fill, paddingXY 0 10, spacing 10] <|
+        [
+            el [] <| text "Home" ,
+            el [] <| text "Known" ,
+            el [] <| text "Options" ,
+            el [ alignRight, Font.color <| rgb 0 255 0  ] <| text (fromFloat percentage ++ "%")
         ]
 
 
