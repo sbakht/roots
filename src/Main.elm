@@ -5,12 +5,13 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, none, paddingXY, rgb, row, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, link, mouseOver, none, paddingXY, paragraph, rgb, row, spacing, spacingXY, text, width)
 import Element.Font as Font
 import Element.Input as Input
+import Element.Events as Events
+import Element.Background as Background
 import EncodeString exposing (encode)
 import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_)
-import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
 import List exposing (drop, filter, head, length, map)
@@ -42,6 +43,7 @@ tempSurahNumber =
 type Route
     = SurahPage Int
     | RootModal Location
+    | KnownPage
     | Null
 
 
@@ -50,6 +52,7 @@ route =
     oneOf
         [ UrlParser.map Null top
         , UrlParser.map SurahPage int
+        , UrlParser.map KnownPage <| s "known"
         , UrlParser.map (\a b c -> RootModal ( a, b, c )) (int </> int </> int)
         ]
 
@@ -169,6 +172,7 @@ type alias Model =
     , known : Known
     , surahNumber : Int
     , activeWordDetails : Maybe ( String, Location )
+    , page : String
     }
 
 
@@ -182,6 +186,7 @@ init _ url key =
       , known = Dict.empty
       , surahNumber = tempSurahNumber
       , activeWordDetails = Nothing
+      , page = "Home"
       }
     , surahCmd tempSurahNumber Dict.empty
     )
@@ -378,6 +383,8 @@ update msg model =
 
                     else
                         ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, surahCmd surahNum model.surahs )
+                KnownPage ->
+                    ( { model | page = "Known" }, Cmd.none )
 
                 Null ->
                     ( model, Cmd.none )
@@ -403,17 +410,53 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "Learn Quran Roots"
     , body =
-        [ Element.layout [] <|
+        [ Element.layout [paddingXY 10 0] <|
             column []
                 [ viewHeader model
-                , row [ height fill, width fill, paddingXY 10 10, spacingXY 10 0, englishFontSize ]
-                    [ viewOverlay model
-                    , viewSurah model
-                    ]
+                , case model.page of
+                    "Known" ->
+                        viewKnown model
+                    _ ->
+                        viewHome model
                 ]
         ]
     }
 
+viewHome : Model -> Element Msg
+viewHome model =
+    row [ height fill, width fill, paddingXY 10 10, spacingXY 10 0, englishFontSize ]
+                        [ viewOverlay model
+                        , viewSurah model]
+
+viewKnown : Model -> Element Msg
+viewKnown model =
+    let
+        totalWords =
+            Dict.foldl (\_ v accum -> length v + accum) 0 model.rootsData
+
+        totalOccurrences root =
+            Dict.get root model.rootsData
+                |> Maybe.withDefault []
+                |> length
+
+        percentage root =
+            toFloat (totalOccurrences root)
+                / toFloat totalWords
+                * 10000
+                |> floor
+                |> toFloat
+                |> (\x -> x / 100)
+                |> fromFloat
+                |> (\x -> x ++ "%")
+    in
+        column [spacing 20] <|
+            (
+            Dict.map (\root _ -> root) model.known
+                |> Dict.toList
+                |> List.indexedMap (\i tuple -> row [spacing 5] [text <| fromInt (i+1) ++ "."
+                                                        , text <| second tuple
+                                                        , text <| percentage (second tuple)])
+                )
 
 viewHeader : Model -> Element Msg
 viewHeader model =
@@ -440,7 +483,7 @@ viewHeader model =
     row [ width fill, paddingXY 0 10, spacing 10] <|
         [
             el [] <| text "Home" ,
-            el [] <| text "Known" ,
+            link [] <| {url = "/known", label= text "Known"} ,
             el [] <| text "Options" ,
             el [ alignRight, Font.color <| rgb 0 255 0  ] <| text (fromFloat percentage ++ "%")
         ]
@@ -549,11 +592,20 @@ viewWord model tokens ai ( wi, w ) =
 
         path =
             locationToUrl ( model.surahNumber, ai, wi )
+
+        backgroundColor = case model.activeWordDetails of
+            Just (r, (a,b,c)) ->
+                if b == ai && c == wi then
+                    Background.color <| rgb 0 0 255
+                else if r == root then
+                    Background.color <| rgb 0 255 0
+                else
+                    Background.color <| rgb 255 255 255
+            _ ->
+                Background.color <| rgb 255 255 255
     in
     if isLearnable == True then
-        Element.link
-            [ wordColor isKnown isLearnable ]
-        <|
+        Element.link [ wordColor isKnown isLearnable, mouseOver [ Background.color <| rgb 255 0 0 ], backgroundColor ] <|
             { url = path, label = text (w ++ " " ++ "") }
 
     else
@@ -653,7 +705,8 @@ filterOutActiveWord location =
 printWordDetails : WordInfo -> Element Msg
 printWordDetails wordInfo =
     row [ width fill ]
-        [ link [ Font.color <| rgb 0 0 255 ]
+        [
+        link [ Font.color <| rgb 0 0 255 ]
             { url = locationToUrl wordInfo.location
             , label = text <| locationToString wordInfo.location
             }
