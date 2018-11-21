@@ -5,16 +5,16 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, link, maximum, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, maximum, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, spacing, spacingXY, text, width)
+import Element.Background as Background
+import Element.Events as Events
 import Element.Font as Font
 import Element.Input as Input
-import Element.Events as Events
-import Element.Background as Background
 import EncodeString exposing (encode)
 import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_)
 import Http
 import Json.Decode as Decode exposing (Decoder, field, int, list, string)
-import List exposing (drop, filter, head, length, map)
+import List exposing (concat, drop, filter, head, length, map)
 import String exposing (dropLeft, dropRight, fromChar, fromFloat, fromInt, split, toInt)
 import Task
 import Tuple exposing (first, mapFirst, mapSecond, second)
@@ -69,21 +69,34 @@ toRoute string =
 
 decodeLocations : Decoder RootsData
 decodeLocations =
-    Decode.keyValuePairs
-        (Decode.map4
-            mkWordInfo
-            (field "location" string)
-            (field "transliteration" string)
-            (field "translation" string)
-            (field "word" string)
-            |> list
-        )
-        |> Decode.map Dict.fromList
+    let
+        stringToLoc : String -> Location
+        stringToLoc s =
+            dropLeft 1 s
+                |> dropRight 1
+                |> split ":"
+                |> map (toInt >> Maybe.withDefault 0)
+                |> toTuple3
 
+        mkWordInfo : String -> String -> String -> String -> WordInfo
+        mkWordInfo a b c d =
+            WordInfo (stringToLoc a) b c d
 
-mkWordInfo : String -> String -> String -> String -> WordInfo
-mkWordInfo a b c d =
-    WordInfo (stringToLoc a) b c d
+        wordDecoder : Decoder WordInfo
+        wordDecoder =
+            Decode.map4 mkWordInfo
+                (field "location" string)
+                (field "transliteration" string)
+                (field "translation" string)
+                (field "word" string)
+
+        dataDecode =
+            list wordDecoder
+                |> field "data"
+                |> Decode.map2 WordsGroup (field "name" string)
+                |> list
+    in
+    Decode.map Dict.fromList <| Decode.keyValuePairs dataDecode
 
 
 decodeSurah : Int -> SurahData -> Decoder SurahData
@@ -99,23 +112,14 @@ mkSurahData surahNum surahData listOfSurahRoots =
     Dict.insert surahNum (formatSurahText listOfSurahRoots) surahData
 
 
-formatSurahText : List String -> Array String
+formatSurahText : List String -> List String
 formatSurahText =
-    dropBasmalah >> Array.fromList
+    dropBasmalah
 
 
 dropBasmalah : List String -> List String
 dropBasmalah =
     drop 1
-
-
-stringToLoc : String -> Location
-stringToLoc s =
-    dropLeft 1 s
-        |> dropRight 1
-        |> split ":"
-        |> map (toInt >> Maybe.withDefault 0)
-        |> toTuple3
 
 
 toTuple3 : List Int -> Location
@@ -205,11 +209,15 @@ type Tokens
 
 
 type alias SurahData =
-    Dict Int (Array String)
+    Dict Int (List String)
 
 
 type alias RootsData =
-    Dict Root (List WordInfo)
+    Dict Root (List WordsGroup)
+
+
+type alias WordsGroup =
+    { name : String, words : List WordInfo }
 
 
 type alias WordInfo =
@@ -235,9 +243,9 @@ type alias Known =
 rootsDataToSurahRoots : RootsData -> SurahRoots
 rootsDataToSurahRoots rootsData =
     let
-        stuff : Root -> List WordInfo -> SurahRoots -> SurahRoots
-        stuff root locs dic =
-            List.foldl (moreStuff root) dic locs
+        stuff : Root -> List WordsGroup -> SurahRoots -> SurahRoots
+        stuff root wordsGroups dic =
+            List.foldl (moreStuff root) dic (List.foldl (\w accum -> List.append accum w.words) [] wordsGroups)
 
         moreStuff : Root -> WordInfo -> SurahRoots -> SurahRoots
         moreStuff root wordInfo surahs =
@@ -383,6 +391,7 @@ update msg model =
 
                     else
                         ( { model | surahNumber = surahNum, activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, surahCmd surahNum model.surahs )
+
                 KnownPage ->
                     ( { model | page = "Known" }, Cmd.none )
 
@@ -405,35 +414,52 @@ englishFontSize =
 arabicFontSize =
     Font.size 30
 
-pageBackground = Background.color <| rgb255 244 241 222
 
-learnedColor = Font.color <| rgb255 61 64 91
-notLearnedColor = Font.color <| rgb255 224 122 95
-hoverBackground = Background.color <| rgb255 242 204 143
-hoverClickedBackground = Background.color <| rgb255 242 204 143
+pageBackground =
+    Background.color <| rgb255 244 241 222
+
+
+learnedColor =
+    Font.color <| rgb255 61 64 91
+
+
+notLearnedColor =
+    Font.color <| rgb255 224 122 95
+
+
+hoverBackground =
+    Background.color <| rgb255 242 204 143
+
+
+hoverClickedBackground =
+    Background.color <| rgb255 242 204 143
 
 
 view : Model -> Browser.Document Msg
 view model =
     { title = "Learn Quran Roots"
     , body =
-        [ Element.layout [paddingXY 10 0, pageBackground] <|
+        [ Element.layout [ paddingXY 10 0, pageBackground ] <|
             column []
                 [ viewHeader model
                 , case model.page of
                     "Known" ->
                         viewKnown model
+
                     _ ->
                         viewHome model
                 ]
         ]
     }
 
+
 viewHome : Model -> Element Msg
 viewHome model =
     row [ height fill, width fill, paddingXY 10 10, spacingXY 10 0, englishFontSize ]
-                        [ viewOverlay model
-                        , viewSurah model]
+        [ viewOverlay model
+        , viewSurah model
+        ]
+
 
 viewKnown : Model -> Element Msg
 viewKnown model =
@@ -456,14 +482,19 @@ viewKnown model =
                 |> fromFloat
                 |> (\x -> x ++ "%")
     in
-        column [spacing 20] <|
-            (
-            Dict.map (\root _ -> root) model.known
-                |> Dict.toList
-                |> List.indexedMap (\i tuple -> row [spacing 5] [text <| fromInt (i+1) ++ "."
-                                                        , text <| second tuple
-                                                        , text <| percentage (second tuple)])
+    column [ spacing 20 ] <|
+        (Dict.map (\root _ -> root) model.known
+            |> Dict.toList
+            |> List.indexedMap
+                (\i tuple ->
+                    row [ spacing 5 ]
+                        [ text <| fromInt (i + 1) ++ "."
+                        , text <| second tuple
+                        , text <| percentage (second tuple)
+                        ]
                 )
+        )
+
 
 viewHeader : Model -> Element Msg
 viewHeader model =
@@ -487,12 +518,11 @@ viewHeader model =
                 |> toFloat
                 |> (\x -> x / 100)
     in
-    row [ width fill, paddingXY 0 10, spacing 10] <|
-        [
-            el [] <| text "Home" ,
-            link [] <| {url = "/known", label= text "Known"} ,
-            el [] <| text "Options" ,
-            el [ alignRight, Font.color <| rgb 0 255 0  ] <| text (fromFloat percentage ++ "%")
+    row [ width fill, paddingXY 0 10, spacing 10 ] <|
+        [ el [] <| text "Home"
+        , link [] <| { url = "/known", label = text "Known" }
+        , el [] <| text "Options"
+        , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromFloat percentage ++ "%")
         ]
 
 
@@ -500,8 +530,8 @@ viewSurah : Model -> Element Msg
 viewSurah model =
     column [ height fill, width fill, spacing 20 ]
         (Dict.get model.surahNumber model.surahs
-            |> Maybe.withDefault Array.empty
-            |> Array.toIndexedList
+            |> Maybe.withDefault []
+            |> List.indexedMap Tuple.pair
             |> indexBy1
             |> map (viewAyat model)
         )
@@ -600,23 +630,27 @@ viewWord model tokens ai ( wi, w ) =
         path =
             locationToUrl ( model.surahNumber, ai, wi )
 
-        backgroundColor = case model.activeWordDetails of
-            Just (r, (a,b,c)) ->
-                if b == ai && c == wi then
-                    hoverClickedBackground
-                else if r == root then
-                    hoverBackground
-                else
+        backgroundColor =
+            case model.activeWordDetails of
+                Just ( r, ( a, b, c ) ) ->
+                    if b == ai && c == wi then
+                        hoverClickedBackground
+
+                    else if r == root then
+                        hoverBackground
+
+                    else
+                        pageBackground
+
+                _ ->
                     pageBackground
-            _ ->
-                pageBackground
     in
     if isLearnable == True then
-        Element.link [ wordColor isKnown isLearnable, mouseOver [ hoverClickedBackground ], backgroundColor, padding 5] <|
+        Element.link [ wordColor isKnown isLearnable, mouseOver [ hoverClickedBackground ], backgroundColor, padding 5 ] <|
             { url = path, label = text (w ++ " " ++ "") }
 
     else
-        el [padding 2] <| text (w ++ " " ++ "")
+        el [ padding 2 ] <| text (w ++ " " ++ "")
 
 
 getRootFromToken : Index -> Tokens -> Root
@@ -648,16 +682,16 @@ viewLearnableWord root learned =
 
 viewOverlay : Model -> Element Msg
 viewOverlay model =
-    column [ height fill, width (fill |> maximum 600)] <|
+    column [ height fill, width (fill |> maximum 600) ] <|
         case model.activeWordDetails of
             Just ( root, loc ) ->
-                    [ viewSelectedWordInfo model.rootsData root loc
-                    , viewLearnableWord root (isLearned root model.known)
-                    , viewOtherWordsWithSameRoot model.rootsData root loc
-                    ]
+                [ viewSelectedWordInfo model.rootsData root loc
+                , viewLearnableWord root (isLearned root model.known)
+                , viewOtherWordsWithSameRoot model.rootsData root loc
+                ]
 
             Nothing ->
-                [el [height fill] <| text "Click on a word to view its info"]
+                [ el [ height fill ] <| text "Click on a word to view its info" ]
 
 
 viewSelectedWordInfo : RootsData -> String -> Location -> Element Msg
@@ -681,8 +715,8 @@ viewSelectedWordInfo rootsData root location =
                     none
     in
     case Dict.get root rootsData of
-        Just wordsInfo ->
-            wordsInfo
+        Just wordsGroups ->
+            List.foldl (\w accum -> List.append w.words accum) [] wordsGroups
                 |> filterToActiveWord
                 |> printActiveWordDetails
 
@@ -693,9 +727,9 @@ viewSelectedWordInfo rootsData root location =
 viewOtherWordsWithSameRoot : RootsData -> String -> Location -> Element Msg
 viewOtherWordsWithSameRoot rootsData root location =
     case Dict.get root rootsData of
-        Just wordsInfo ->
+        Just wordsGroups ->
             column [ width fill ]
-                (wordsInfo
+                (List.foldl (\w accum -> List.append w.words accum) [] wordsGroups
                     |> filterOutActiveWord location
                     |> map printWordDetails
                 )
@@ -712,8 +746,7 @@ filterOutActiveWord location =
 printWordDetails : WordInfo -> Element Msg
 printWordDetails wordInfo =
     row [ width fill ]
-        [
-        link [ Font.color <| rgb 0 0 255 ]
+        [ link [ Font.color <| rgb 0 0 255 ]
             { url = locationToUrl wordInfo.location
             , label = text <| locationToString wordInfo.location
             }
