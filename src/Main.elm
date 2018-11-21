@@ -5,7 +5,7 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, link, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, link, maximum, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, spacing, spacingXY, text, width)
 import Element.Font as Font
 import Element.Input as Input
 import Element.Events as Events
@@ -498,7 +498,7 @@ viewHeader model =
 
 viewSurah : Model -> Element Msg
 viewSurah model =
-    column [ height fill, width <| fillPortion surahSize, spacing 20 ]
+    column [ height fill, width fill, spacing 20 ]
         (Dict.get model.surahNumber model.surahs
             |> Maybe.withDefault Array.empty
             |> Array.toIndexedList
@@ -648,16 +648,16 @@ viewLearnableWord root learned =
 
 viewOverlay : Model -> Element Msg
 viewOverlay model =
-    case model.activeWordDetails of
-        Just ( root, loc ) ->
-            column [ height fill, width <| fillPortion overlaySize ]
-                [ viewSelectedWordInfo model.rootsData root loc
-                , viewLearnableWord root (isLearned root model.known)
-                , viewOtherWordsWithSameRoot model.rootsData root loc
-                ]
+    column [ height fill, width (fill |> maximum 600)] <|
+        case model.activeWordDetails of
+            Just ( root, loc ) ->
+                    [ viewSelectedWordInfo model.rootsData root loc
+                    , viewLearnableWord root (isLearned root model.known)
+                    , viewOtherWordsWithSameRoot model.rootsData root loc
+                    ]
 
-        Nothing ->
-            Element.none
+            Nothing ->
+                [el [height fill] <| text "Click on a word to view its info"]
 
 
 viewSelectedWordInfo : RootsData -> String -> Location -> Element Msg

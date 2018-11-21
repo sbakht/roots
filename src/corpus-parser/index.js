@@ -8,28 +8,32 @@ let count = 0;
 let captureRoots;
 
 app.get('/scrape', function(req, res) {
-    let pageRoots = req.param("roots");
-    fs.readFile('output.json', 'utf8', function(err, input) {
-        let json = JSON.parse(input || '{}');
-        let rootList;
-        request({
-            url: baseUrl,
-            qs: {q : pageRoots}
-            }, function(error, response, html) {
-            console.log('Fetching base ' + baseUrl + pageRoots);
-            if (!error) {
-                var $ = cheerio.load(html);
-                // addRootData($, json, pageRoots);
-                rootList = getRootList($);
-                captureRoots = rootList.filter((root) => {
-                    return !json[root.arabic];
-                });
-                captureRoots.map((root, i) => requestRoot(json, root, i));
-            }
-            writeToFile(json);
+    let pageRoots = req.query.roots;
+    console.log(pageRoots)
+    pageRoots.split(',').map(roots => {
+        console.log(roots);
+        fs.readFile('output.json', 'utf8', function(err, input) {
+            let json = JSON.parse(input || '{}');
+            let rootList;
+            request({
+                url: baseUrl,
+                qs: {q : roots}
+                }, function(error, response, html) {
+                console.log('Fetching base ' + baseUrl + roots);
+                if (!error) {
+                    var $ = cheerio.load(html);
+                    // addRootData($, json, roots);
+                    rootList = getRootList($);
+                    captureRoots = rootList.filter((root) => {
+                        return !json[root.arabic];
+                    });
+                    captureRoots.map((root, i) => requestRoot(json, root, i));
+                }
+                writeToFile(json);
+            });
         });
-        res.send('Check your console!')
-    });
+    })
+    res.send('Check your console!')
 })
 app.listen('3000');
 
@@ -78,17 +82,22 @@ function requestRoot(json, roots, i) {
 
 function addRootData($, json, roots) {
     if (!json[roots]) {
-        json[roots] = [];
-        $('.content tr').each(function() {
-            var $el = $(this);
-            let obj = {
-                location: $(".l", $el).text(),
-                transliteration: $(".ab", $el).text(),
-                translation: $(".c2 a", $el).text(),
-                word: $(".auu", $el).text(),
-            };
-            json[roots].push(obj);
+        const data = [];
+        $('.content table').each(function() {
+            let table = {name: $(this).prev().text(), data: []};
+            $('tr', $(this)).each(function() {
+                var $el = $(this);
+                let obj = {
+                    location: $(".l", $el).text(),
+                    transliteration: $(".ab", $el).text(),
+                    translation: $(".c2 a", $el).text(),
+                    word: $(".auu", $el).text(),
+                };
+                table.data.push(obj);
+            });
+            data.push(table);
         });
+        json[roots] = data;
     } else {
         console.log('Already have ' + roots);
     }
