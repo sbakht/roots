@@ -5,9 +5,9 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, maximum, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, maximum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
 import Element.Background as Background
-import Element.Events as Events
+import Element.Events as Events exposing (onClick)
 import Element.Font as Font
 import Element.Input as Input
 import EncodeString exposing (encode)
@@ -93,7 +93,7 @@ decodeLocations =
         dataDecode =
             list wordDecoder
                 |> field "data"
-                |> Decode.map2 WordsGroup (field "name" string)
+                |> Decode.map3 WordsGroup (field "name" string) (Decode.succeed True)
                 |> list
     in
     Decode.map Dict.fromList <| Decode.keyValuePairs dataDecode
@@ -217,7 +217,7 @@ type alias RootsData =
 
 
 type alias WordsGroup =
-    { name : String, words : List WordInfo }
+    { name : String, collapsed: Bool, words : List WordInfo }
 
 
 type alias WordInfo =
@@ -296,6 +296,7 @@ type Msg
     | SetActiveDetails ( Root, Location )
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
+    | ToggleOverlayGroup Int Root
     | NoOp
 
 
@@ -397,6 +398,30 @@ update msg model =
 
                 Null ->
                     ( model, Cmd.none )
+        ToggleOverlayGroup index root ->
+            let
+
+                oldWordsGroups : List WordsGroup
+                oldWordsGroups = case Dict.get root model.rootsData of
+                    Just data ->
+                        data
+                    Nothing ->
+                        []
+
+                newWordsGroups : List WordsGroup
+                newWordsGroups = List.indexedMap (\i group ->
+                        if i == index then
+                            {group | collapsed = not group.collapsed}
+                        else
+                            group
+                    ) oldWordsGroups
+
+                newRootsData : RootsData
+                newRootsData = Dict.insert root newWordsGroups model.rootsData
+            in
+            ({model | rootsData = newRootsData}, Cmd.none)
+
+
 
 
 englishFontSize =
@@ -661,7 +686,7 @@ isLearned root known =
 
 viewLearnableWord : Root -> Bool -> Element Msg
 viewLearnableWord root learned =
-    el [ centerX ] <|
+    el [ centerX, paddingXY 0 10 ] <|
         Input.checkbox []
             { onChange = SetKnown root
             , icon =
@@ -701,7 +726,7 @@ viewSelectedWordInfo rootsData root location =
         printActiveWordDetails wordInfoM =
             case wordInfoM of
                 Just wordInfo ->
-                    column [ width fill ]
+                    column [ width fill, spacingXY 0 10 ]
                         [ el [ arabicFontSize, centerX ] <| text ("(" ++ wordInfo.word ++ " (" ++ root)
                         , el [ centerX ] <| text wordInfo.translation
                         , el [ centerX ] <| text (locationToString wordInfo.location)
@@ -722,21 +747,40 @@ viewSelectedWordInfo rootsData root location =
 
 viewOtherWordsWithSameRoot : RootsData -> String -> Location -> Element Msg
 viewOtherWordsWithSameRoot rootsData root location =
+    let
+        filterOutActiveWord : List WordInfo -> List WordInfo
+        filterOutActiveWord =
+            filter (\wordInfo -> wordInfo.location /= location)
+
+        printTable : List WordInfo -> List (Element Msg)
+        printTable = map printWordDetails
+--              |> filterOutActiveWord location
+
+        count : WordsGroup -> String
+        count group = "(" ++ (fromInt <| length group.words) ++ ")"
+
+        header : Int -> WordsGroup -> Element Msg
+        header index group = row [width fill, paddingXY 0 10, pointer, onClick <| ToggleOverlayGroup index root ] [el [centerX, Font.bold] <| text (group.name ++ " " ++ count group)]
+
+        printGroup : Int -> WordsGroup -> List (Element Msg)
+        printGroup index group = if group.collapsed == True then
+                [header index group]
+            else
+                header index group :: printTable group.words
+
+        rows : List WordsGroup -> List (Element Msg)
+        rows wordsGroups =
+                     concat <| List.indexedMap printGroup wordsGroups
+
+    in
     case Dict.get root rootsData of
         Just wordsGroups ->
-            column [ width fill ]
-                (List.foldl (\w accum -> List.append w.words accum) [] wordsGroups
-                    |> filterOutActiveWord location
-                    |> map printWordDetails
-                )
+            column [ width fill ] <| rows wordsGroups
 
         Nothing ->
             none
 
 
-filterOutActiveWord : Location -> List WordInfo -> List WordInfo
-filterOutActiveWord location =
-    filter (\wordInfo -> wordInfo.location /= location)
 
 
 printWordDetails : WordInfo -> Element Msg
