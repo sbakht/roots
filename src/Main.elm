@@ -5,7 +5,7 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, maximum, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, maximum, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
 import Element.Background as Background
 import Element.Events as Events
 import Element.Font as Font
@@ -399,14 +399,6 @@ update msg model =
                     ( model, Cmd.none )
 
 
-overlaySize =
-    1
-
-
-surahSize =
-    5
-
-
 englishFontSize =
     Font.size 14
 
@@ -435,12 +427,16 @@ hoverClickedBackground =
     Background.color <| rgb255 242 204 143
 
 
+contentHeight =
+    900
+
+
 view : Model -> Browser.Document Msg
 view model =
     { title = "Learn Quran Roots"
     , body =
         [ Element.layout [ paddingXY 10 0, pageBackground ] <|
-            column []
+            column [ width fill ]
                 [ viewHeader model
                 , case model.page of
                     "Known" ->
@@ -528,7 +524,7 @@ viewHeader model =
 
 viewSurah : Model -> Element Msg
 viewSurah model =
-    column [ height fill, width fill, spacing 20 ]
+    column [ height (fill |> maximum contentHeight), width fill, spacing 20, scrollbarY ]
         (Dict.get model.surahNumber model.surahs
             |> Maybe.withDefault []
             |> List.indexedMap Tuple.pair
@@ -682,7 +678,7 @@ viewLearnableWord root learned =
 
 viewOverlay : Model -> Element Msg
 viewOverlay model =
-    column [ height fill, width (fill |> maximum 600) ] <|
+    column [ height (fill |> maximum contentHeight), width (fill |> maximum 600), scrollbarY ] <|
         case model.activeWordDetails of
             Just ( root, loc ) ->
                 [ viewSelectedWordInfo model.rootsData root loc
