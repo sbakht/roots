@@ -5,7 +5,7 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, link, mouseOver, none, paddingXY, paragraph, rgb, row, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, link, mouseOver, none, padding, paddingXY, paragraph, rgb, rgb255, row, spacing, spacingXY, text, width)
 import Element.Font as Font
 import Element.Input as Input
 import Element.Events as Events
@@ -405,12 +405,19 @@ englishFontSize =
 arabicFontSize =
     Font.size 30
 
+pageBackground = Background.color <| rgb255 244 241 222
+
+learnedColor = Font.color <| rgb255 61 64 91
+notLearnedColor = Font.color <| rgb255 224 122 95
+hoverBackground = Background.color <| rgb255 242 204 143
+hoverClickedBackground = Background.color <| rgb255 242 204 143
+
 
 view : Model -> Browser.Document Msg
 view model =
     { title = "Learn Quran Roots"
     , body =
-        [ Element.layout [paddingXY 10 0] <|
+        [ Element.layout [paddingXY 10 0, pageBackground] <|
             column []
                 [ viewHeader model
                 , case model.page of
@@ -569,10 +576,10 @@ wordColor : Bool -> Bool -> Attr decorative Msg
 wordColor isKnown isLearnable =
     case ( isKnown, isLearnable ) of
         ( True, _ ) ->
-            Font.color <| Element.rgb 0 0 255
+            learnedColor
 
         ( _, True ) ->
-            Font.color <| Element.rgb 255 0 0
+            notLearnedColor
 
         ( _, _ ) ->
             Font.color <| Element.rgb 0 0 0
@@ -596,20 +603,20 @@ viewWord model tokens ai ( wi, w ) =
         backgroundColor = case model.activeWordDetails of
             Just (r, (a,b,c)) ->
                 if b == ai && c == wi then
-                    Background.color <| rgb 0 0 255
+                    hoverClickedBackground
                 else if r == root then
-                    Background.color <| rgb 0 255 0
+                    hoverBackground
                 else
-                    Background.color <| rgb 255 255 255
+                    pageBackground
             _ ->
-                Background.color <| rgb 255 255 255
+                pageBackground
     in
     if isLearnable == True then
-        Element.link [ wordColor isKnown isLearnable, mouseOver [ Background.color <| rgb 255 0 0 ], backgroundColor ] <|
+        Element.link [ wordColor isKnown isLearnable, mouseOver [ hoverClickedBackground ], backgroundColor, padding 5] <|
             { url = path, label = text (w ++ " " ++ "") }
 
     else
-        el [] <| text (w ++ " " ++ "")
+        el [padding 2] <| text (w ++ " " ++ "")
 
 
 getRootFromToken : Index -> Tokens -> Root
