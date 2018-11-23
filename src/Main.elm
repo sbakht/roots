@@ -10,6 +10,7 @@ import Element.Background as Background
 import Element.Events as Events exposing (onClick)
 import Element.Font as Font
 import Element.Input as Input
+import Element.Lazy exposing (lazy, lazy3)
 import EncodeString exposing (encode)
 import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_)
 import Http
@@ -175,7 +176,7 @@ type alias Model =
     , rootsData : RootsData
     , known : Known
     , surahNumber : Int
-    , activeWordDetails : Maybe ( String, Location )
+    , activeWordDetails: ActiveWordDetails
     , page : String
     }
 
@@ -207,6 +208,7 @@ type Ayats
 type Tokens
     = Tokens (Dict Index Root)
 
+type Progress = Learning | Learned
 
 type alias SurahData =
     Dict Int (List String)
@@ -223,6 +225,8 @@ type alias WordsGroup =
 type alias WordInfo =
     { location : Location, transliteration : String, translation : String, word : String }
 
+type alias ActiveWordDetails = Maybe ( String, Location )
+
 
 type alias Root =
     String
@@ -237,7 +241,7 @@ type alias Location =
 
 
 type alias Known =
-    Dict String ()
+    Dict String Progress
 
 
 rootsDataToSurahRoots : RootsData -> SurahRoots
@@ -290,7 +294,7 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
 
 
 type Msg
-    = SetKnown Root Bool
+    = SetKnown Root (Maybe Progress)
     | LoadSurah (Result Http.Error SurahData)
     | LoadRootsData (Result Http.Error RootsData)
     | SetActiveDetails ( Root, Location )
@@ -308,22 +312,26 @@ update msg model =
 
         SetKnown root isKnown ->
             let
-                learn : Root -> Dict String () -> Dict String ()
-                learn rootLetters learned =
-                    Dict.insert rootLetters () learned
+                learn : Root -> Progress -> Known -> Known
+                learn rootLetters progress learned =
+                    Dict.insert rootLetters progress learned
 
-                forget : Root -> Dict String () -> Dict String ()
+                forget : Root -> Known -> Known
                 forget rootLetters learned =
                     Dict.remove rootLetters learned
             in
             if root == "" then
                 ( model, Cmd.none )
 
-            else if isLearned root model.known then
-                ( { model | known = forget root model.known }, Cmd.none )
-
             else
-                ( { model | known = learn root model.known }, Cmd.none )
+                case isKnown of
+                    Just Learned ->
+                        ( { model | known = learn root Learned model.known }, Cmd.none )
+                    Just Learning ->
+                        ( { model | known = learn root Learning model.known }, Cmd.none )
+                    Nothing ->
+                        ( { model | known = forget root model.known }, Cmd.none )
+
 
         SetActiveDetails ( root, loc ) ->
             if root == "" then
@@ -439,6 +447,8 @@ pageBackground =
 learnedColor =
     Font.color <| rgb255 61 64 91
 
+learningColor =
+    Font.color <| rgb255 0 0 255
 
 notLearnedColor =
     Font.color <| rgb255 224 122 95
@@ -560,7 +570,7 @@ viewSurah model =
 
 viewAyat : Model -> ( Int, String ) -> Element Msg
 viewAyat model ( ai, ayatString ) =
-    row [ spacing 5 ] [ printAyatNumber ai, printAyat model ( ai, ayatString ) ]
+    row [ spacing 5 ] [ lazy printAyatNumber <| ai, printAyat model ( ai, ayatString ) ]
 
 
 printAyat : Model -> ( Int, String ) -> Element Msg
@@ -584,8 +594,8 @@ printAyat model ( ai, ayatString ) =
         |> Array.fromList
         |> Array.toIndexedList
         |> indexBy1
-        |> map (viewWord model tokens ai)
-        |> Element.paragraph [ arabicFontSize ]
+        |> map (viewWord model.surahNumber model.activeWordDetails model.known tokens ai)
+        |> Element.paragraph [ arabicFontSize, Font.family [Font.typeface "KFGQPC Uthman Taha Naskh"] ]
 
 
 printAyatNumber : Int -> Element Msg
@@ -623,36 +633,39 @@ indexBy1 =
     map (\( i, s ) -> ( i + 1, s ))
 
 
-wordColor : Bool -> Bool -> Attr decorative Msg
+wordColor : Maybe Progress -> Bool -> Attr decorative Msg
 wordColor isKnown isLearnable =
     case ( isKnown, isLearnable ) of
-        ( True, _ ) ->
+        ( Just Learned, _ ) ->
             learnedColor
 
-        ( _, True ) ->
+        ( Just Learning, True ) ->
+            learningColor
+
+        ( Nothing, True ) ->
             notLearnedColor
 
         ( _, _ ) ->
             Font.color <| Element.rgb 0 0 0
 
 
-viewWord : Model -> Tokens -> Int -> ( Int, String ) -> Element Msg
-viewWord model tokens ai ( wi, w ) =
+viewWord : Int -> ActiveWordDetails -> Known -> Tokens -> Int -> ( Int, String ) -> Element Msg
+viewWord surahNumber activeWordDetails known tokens ai ( wi, w ) =
     let
         root =
             getRootFromToken wi tokens
 
         isKnown =
-            isLearned root model.known
+            isLearned root known
 
         isLearnable =
             root /= ""
 
         path =
-            locationToUrl ( model.surahNumber, ai, wi )
+            locationToUrl ( surahNumber, ai, wi )
 
         backgroundColor =
-            case model.activeWordDetails of
+            case activeWordDetails of
                 Just ( r, ( a, b, c ) ) ->
                     if b == ai && c == wi then
                         hoverClickedBackground
@@ -665,13 +678,16 @@ viewWord model tokens ai ( wi, w ) =
 
                 _ ->
                     pageBackground
-    in
-    if isLearnable == True then
-        Element.link [ wordColor isKnown isLearnable, mouseOver [ hoverClickedBackground ], backgroundColor, padding 5 ] <|
-            { url = path, label = text (w ++ " " ++ "") }
 
-    else
-        el [ padding 2 ] <| text (w ++ " " ++ "")
+        stuff knowned learnable bgColor =
+            if isLearnable == True then
+                Element.link [ wordColor knowned learnable, mouseOver [ hoverClickedBackground ], bgColor, padding 5 ] <|
+                    { url = path, label = text (w ++ " " ++ "") }
+
+            else
+                el [ padding 2 ] <| text (w ++ " " ++ "")
+    in
+        lazy3 stuff isKnown isLearnable backgroundColor
 
 
 getRootFromToken : Index -> Tokens -> Root
@@ -679,25 +695,23 @@ getRootFromToken index (Tokens token) =
     Dict.get index token |> Maybe.withDefault ""
 
 
-isLearned : Root -> Known -> Bool
+isLearned : Root -> Known -> Maybe Progress
 isLearned root known =
-    Dict.member root known
+    Dict.get root known
 
 
-viewLearnableWord : Root -> Bool -> Element Msg
-viewLearnableWord root learned =
+viewLearnableWord : Root -> Maybe Progress -> Element Msg
+viewLearnableWord root progress =
     el [ centerX, paddingXY 0 10 ] <|
-        Input.checkbox []
+        Input.radio [ spacing 10]
             { onChange = SetKnown root
-            , icon =
-                \checked ->
-                    if checked then
-                        text "YES"
-
-                    else
-                        text "NO"
-            , checked = learned
-            , label = Input.labelRight [] (text "Learned")
+            , selected = Just progress
+            , label = Input.labelAbove [ paddingXY 0 5] (text "Set your learning progress on this root:")
+            , options = [
+                 Input.option Nothing (text "Not Learned")
+                ,Input.option (Just Learning) (text "Learning")
+                ,Input.option (Just Learned) (text "Learned")
+                ]
             }
 
 
