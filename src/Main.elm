@@ -1,4 +1,4 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 import Array exposing (Array)
 import Browser
@@ -14,7 +14,7 @@ import Element.Lazy exposing (lazy, lazy3)
 import EncodeString exposing (encode)
 import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_)
 import Http
-import Json.Decode as Decode exposing (Decoder, field, int, list, string)
+import Json.Decode as Decode exposing (Decoder, Value, field, int, list, string)
 import List exposing (concat, drop, filter, head, length, map)
 import String exposing (dropLeft, dropRight, fromChar, fromFloat, fromInt, split, toInt)
 import Task
@@ -66,6 +66,27 @@ toRoute string =
 
         Nothing ->
             Null
+
+
+decodeProgress : Decoder Known
+decodeProgress =
+    let
+        dataDecode =
+            Decode.map2
+                (\x learned ->
+                    ( x
+                    , if learned then
+                        Learned
+
+                      else
+                        Learning
+                    )
+                )
+                (field "root" string)
+                (field "learned" Decode.bool)
+                |> list
+    in
+    Decode.map Dict.fromList dataDecode
 
 
 decodeLocations : Decoder RootsData
@@ -176,19 +197,19 @@ type alias Model =
     , rootsData : RootsData
     , known : Known
     , surahNumber : Int
-    , activeWordDetails: ActiveWordDetails
+    , activeWordDetails : ActiveWordDetails
     , page : String
     }
 
 
-init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
-init _ url key =
+init : Value -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init sessionProgress url key =
     ( { key = key
       , url = url
       , surahs = Dict.empty
       , surahRoots = SurahRoots Dict.empty
       , rootsData = Dict.empty
-      , known = Dict.empty
+      , known = Result.withDefault Dict.empty <| Debug.log "dfd" (Decode.decodeValue decodeProgress sessionProgress)
       , surahNumber = tempSurahNumber
       , activeWordDetails = Nothing
       , page = "Home"
@@ -208,7 +229,11 @@ type Ayats
 type Tokens
     = Tokens (Dict Index Root)
 
-type Progress = Learning | Learned
+
+type Progress
+    = Learning
+    | Learned
+
 
 type alias SurahData =
     Dict Int (List String)
@@ -219,13 +244,15 @@ type alias RootsData =
 
 
 type alias WordsGroup =
-    { name : String, collapsed: Bool, words : List WordInfo }
+    { name : String, collapsed : Bool, words : List WordInfo }
 
 
 type alias WordInfo =
     { location : Location, transliteration : String, translation : String, word : String }
 
-type alias ActiveWordDetails = Maybe ( String, Location )
+
+type alias ActiveWordDetails =
+    Maybe ( String, Location )
 
 
 type alias Root =
@@ -293,6 +320,16 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
             newSurah
 
 
+port saveProgress : List Tracker -> Cmd msg
+
+
+port loadProgress : (Value -> msg) -> Sub msg
+
+
+type alias Tracker =
+    { root : Root, learned : Bool }
+
+
 type Msg
     = SetKnown Root (Maybe Progress)
     | LoadSurah (Result Http.Error SurahData)
@@ -319,6 +356,21 @@ update msg model =
                 forget : Root -> Known -> Known
                 forget rootLetters learned =
                     Dict.remove rootLetters learned
+
+                cmd known =
+                    saveProgress
+                        (map
+                            (\( k, v ) ->
+                                Tracker k <|
+                                    if v == Learned then
+                                        True
+
+                                    else
+                                        False
+                            )
+                         <|
+                            Dict.toList known
+                        )
             in
             if root == "" then
                 ( model, Cmd.none )
@@ -326,12 +378,13 @@ update msg model =
             else
                 case isKnown of
                     Just Learned ->
-                        ( { model | known = learn root Learned model.known }, Cmd.none )
-                    Just Learning ->
-                        ( { model | known = learn root Learning model.known }, Cmd.none )
-                    Nothing ->
-                        ( { model | known = forget root model.known }, Cmd.none )
+                        ( { model | known = learn root Learned model.known }, cmd <| learn root Learned model.known )
 
+                    Just Learning ->
+                        ( { model | known = learn root Learning model.known }, cmd <| learn root Learning model.known )
+
+                    Nothing ->
+                        ( { model | known = forget root model.known }, cmd <| forget root model.known )
 
         SetActiveDetails ( root, loc ) ->
             if root == "" then
@@ -406,30 +459,35 @@ update msg model =
 
                 Null ->
                     ( model, Cmd.none )
+
         ToggleOverlayGroup index root ->
             let
-
                 oldWordsGroups : List WordsGroup
-                oldWordsGroups = case Dict.get root model.rootsData of
-                    Just data ->
-                        data
-                    Nothing ->
-                        []
+                oldWordsGroups =
+                    case Dict.get root model.rootsData of
+                        Just data ->
+                            data
+
+                        Nothing ->
+                            []
 
                 newWordsGroups : List WordsGroup
-                newWordsGroups = List.indexedMap (\i group ->
-                        if i == index then
-                            {group | collapsed = not group.collapsed}
-                        else
-                            group
-                    ) oldWordsGroups
+                newWordsGroups =
+                    List.indexedMap
+                        (\i group ->
+                            if i == index then
+                                { group | collapsed = not group.collapsed }
+
+                            else
+                                group
+                        )
+                        oldWordsGroups
 
                 newRootsData : RootsData
-                newRootsData = Dict.insert root newWordsGroups model.rootsData
+                newRootsData =
+                    Dict.insert root newWordsGroups model.rootsData
             in
-            ({model | rootsData = newRootsData}, Cmd.none)
-
-
+            ( { model | rootsData = newRootsData }, Cmd.none )
 
 
 englishFontSize =
@@ -447,8 +505,10 @@ pageBackground =
 learnedColor =
     Font.color <| rgb255 61 64 91
 
+
 learningColor =
     Font.color <| rgb255 0 0 255
+
 
 notLearnedColor =
     Font.color <| rgb255 224 122 95
@@ -595,7 +655,7 @@ printAyat model ( ai, ayatString ) =
         |> Array.toIndexedList
         |> indexBy1
         |> map (viewWord model.surahNumber model.activeWordDetails model.known tokens ai)
-        |> Element.paragraph [ arabicFontSize, Font.family [Font.typeface "KFGQPC Uthman Taha Naskh"] ]
+        |> Element.paragraph [ arabicFontSize, Font.family [ Font.typeface "KFGQPC Uthman Taha Naskh" ] ]
 
 
 printAyatNumber : Int -> Element Msg
@@ -687,7 +747,7 @@ viewWord surahNumber activeWordDetails known tokens ai ( wi, w ) =
             else
                 el [ padding 2 ] <| text (w ++ " " ++ "")
     in
-        lazy3 stuff isKnown isLearnable backgroundColor
+    lazy3 stuff isKnown isLearnable backgroundColor
 
 
 getRootFromToken : Index -> Tokens -> Root
@@ -703,14 +763,14 @@ isLearned root known =
 viewLearnableWord : Root -> Maybe Progress -> Element Msg
 viewLearnableWord root progress =
     el [ centerX, paddingXY 0 10 ] <|
-        Input.radio [ spacing 10]
+        Input.radio [ spacing 10 ]
             { onChange = SetKnown root
             , selected = Just progress
-            , label = Input.labelAbove [ paddingXY 0 5] (text "Set your learning progress on this root:")
-            , options = [
-                 Input.option Nothing (text "Not Learned")
-                ,Input.option (Just Learning) (text "Learning")
-                ,Input.option (Just Learned) (text "Learned")
+            , label = Input.labelAbove [ paddingXY 0 5 ] (text "Set your learning progress on this root:")
+            , options =
+                [ Input.option Nothing (text "Not Learned")
+                , Input.option (Just Learning) (text "Learning")
+                , Input.option (Just Learned) (text "Learned")
                 ]
             }
 
@@ -767,25 +827,29 @@ viewOtherWordsWithSameRoot rootsData root location =
             filter (\wordInfo -> wordInfo.location /= location)
 
         printTable : List WordInfo -> List (Element Msg)
-        printTable = map printWordDetails
---              |> filterOutActiveWord location
+        printTable =
+            map printWordDetails
 
+        --              |> filterOutActiveWord location
         count : WordsGroup -> String
-        count group = "(" ++ (fromInt <| length group.words) ++ ")"
+        count group =
+            "(" ++ (fromInt <| length group.words) ++ ")"
 
         header : Int -> WordsGroup -> Element Msg
-        header index group = row [width fill, paddingXY 0 10, pointer, onClick <| ToggleOverlayGroup index root ] [el [centerX, Font.bold] <| text (group.name ++ " " ++ count group)]
+        header index group =
+            row [ width fill, paddingXY 0 10, pointer, onClick <| ToggleOverlayGroup index root ] [ el [ centerX, Font.bold ] <| text (group.name ++ " " ++ count group) ]
 
         printGroup : Int -> WordsGroup -> List (Element Msg)
-        printGroup index group = if group.collapsed == True then
-                [header index group]
+        printGroup index group =
+            if group.collapsed == True then
+                [ header index group ]
+
             else
                 header index group :: printTable group.words
 
         rows : List WordsGroup -> List (Element Msg)
         rows wordsGroups =
-                     concat <| List.indexedMap printGroup wordsGroups
-
+            concat <| List.indexedMap printGroup wordsGroups
     in
     case Dict.get root rootsData of
         Just wordsGroups ->
@@ -795,8 +859,6 @@ viewOtherWordsWithSameRoot rootsData root location =
             none
 
 
-
-
 printWordDetails : WordInfo -> Element Msg
 printWordDetails wordInfo =
     row [ width fill ]
@@ -804,8 +866,8 @@ printWordDetails wordInfo =
             { url = locationToUrl wordInfo.location
             , label = text <| locationToString wordInfo.location
             }
-        , el [ centerX ] <| text wordInfo.translation
-        , el [ alignRight, arabicFontSize ] <| text wordInfo.word
+        , lazy (el [ centerX ] << text) wordInfo.translation
+        , lazy (el [ alignRight, arabicFontSize ] << text) wordInfo.word
         ]
 
 
@@ -832,7 +894,7 @@ scrollToWord loc =
 --  Task.perform (\_ -> NoOp) (Dom.setViewport 0 0)
 
 
-main : Program () Model Msg
+main : Program Value Model Msg
 main =
     Browser.application
         { init = init
