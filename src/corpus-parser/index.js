@@ -8,10 +8,7 @@ let count = 0;
 let captureRoots;
 
 app.get('/scrape', function(req, res) {
-    let pageRoots = req.query.roots;
-    console.log(pageRoots)
-    pageRoots.split(',').map(roots => {
-        console.log(roots);
+    let roots = req.query.roots;
         fs.readFile('output.json', 'utf8', function(err, input) {
             let json = JSON.parse(input || '{}');
             let rootList;
@@ -27,12 +24,14 @@ app.get('/scrape', function(req, res) {
                     captureRoots = rootList.filter((root) => {
                         return !json[root.arabic];
                     });
+                    console.log(captureRoots)
                     captureRoots.map((root, i) => requestRoot(json, root, i));
+                }else{
+                    console.log(error);
                 }
                 writeToFile(json);
             });
         });
-    })
     res.send('Check your console!')
 })
 app.listen('3000');
@@ -50,8 +49,8 @@ function getRootList($) {
     $('#entryList option').each(function() {
         let data = $(this);
         list.push({
-            english: decodeURI(data.val()),
-            arabic: decodeURI(data.text())
+            english: decodeURIComponent(data.val()),
+            arabic: decodeURIComponent(data.text())
         });
     })
     return list;
