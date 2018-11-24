@@ -73,7 +73,7 @@ function requestRoot(json, roots, i) {
                     console.log('All requests done!', roots.english);
                 }
             });
-        }, 1000)
+        }, 3000)
     } else {
         console.log('Already have ' + roots);
     }
