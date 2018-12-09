@@ -45,6 +45,7 @@ type Route
     = SurahPage Int
     | RootModal Location
     | KnownPage
+    | ExportPage
     | Null
 
 
@@ -54,6 +55,7 @@ route =
         [ UrlParser.map Null top
         , UrlParser.map SurahPage int
         , UrlParser.map KnownPage <| s "known"
+        , UrlParser.map ExportPage <| s "export"
         , UrlParser.map (\a b c -> RootModal ( a, b, c )) (int </> int </> int)
         ]
 
@@ -87,6 +89,11 @@ decodeProgress =
                 |> list
     in
     Decode.map Dict.fromList dataDecode
+
+
+decodeTranslations : Decoder (List String)
+decodeTranslations =
+    field "data" <| field "ayahs" <| list <| field "text" string
 
 
 decodeLocations : Decoder RootsData
@@ -166,6 +173,10 @@ surahsUrl =
     "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah/surah_"
 
 
+translationUrl s =
+    "http://api.alquran.cloud/surah/" ++ fromInt s ++ "/en.sahih"
+
+
 getSurahRequestUrl : Int -> String
 getSurahRequestUrl surahNumber =
     surahsUrl ++ fromInt surahNumber ++ ".json"
@@ -185,6 +196,13 @@ surahCmd surahNum surahData =
         |> Http.send LoadSurah
 
 
+translationCmd : Int -> Cmd Msg
+translationCmd surahNum =
+    decodeTranslations
+        |> Http.get (translationUrl surahNum)
+        |> Http.send LoadTranslations
+
+
 
 -- Model
 
@@ -199,6 +217,7 @@ type alias Model =
     , surahNumber : Int
     , activeWordDetails : ActiveWordDetails
     , page : String
+    , translations : List String
     }
 
 
@@ -209,10 +228,11 @@ init sessionProgress url key =
       , surahs = Dict.empty
       , surahRoots = SurahRoots Dict.empty
       , rootsData = Dict.empty
-      , known = Result.withDefault Dict.empty <| Debug.log "dfd" (Decode.decodeValue decodeProgress sessionProgress)
+      , known = Result.withDefault Dict.empty <| Decode.decodeValue decodeProgress sessionProgress
       , surahNumber = tempSurahNumber
       , activeWordDetails = Nothing
       , page = "Home"
+      , translations = []
       }
     , surahCmd tempSurahNumber Dict.empty
     )
@@ -334,6 +354,7 @@ type Msg
     = SetKnown Root (Maybe Progress)
     | LoadSurah (Result Http.Error SurahData)
     | LoadRootsData (Result Http.Error RootsData)
+    | LoadTranslations (Result Http.Error (List String))
     | SetActiveDetails ( Root, Location )
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
@@ -414,6 +435,16 @@ update msg model =
         LoadRootsData _ ->
             ( model, Cmd.none )
 
+        LoadTranslations (Ok translations) ->
+            ( { model | translations = Debug.log "eeee" translations }, Cmd.none )
+
+        LoadTranslations d ->
+            let
+                x =
+                    Debug.log "df" d
+            in
+            ( model, Cmd.none )
+
         LinkClicked urlRequest ->
             case urlRequest of
                 Browser.Internal url ->
@@ -456,6 +487,9 @@ update msg model =
 
                 KnownPage ->
                     ( { model | page = "Known" }, Cmd.none )
+
+                ExportPage ->
+                    ( { model | page = "Export" }, translationCmd model.surahNumber )
 
                 Null ->
                     ( model, Cmd.none )
@@ -537,6 +571,9 @@ view model =
                     "Known" ->
                         viewKnown model
 
+                    "Export" ->
+                        viewCSV model
+
                     _ ->
                         viewHome model
                 ]
@@ -587,6 +624,16 @@ viewKnown model =
         )
 
 
+viewCSV : Model -> Element Msg
+viewCSV model =
+    let
+        ayats : List ( Index, String )
+        ayats =
+            getKnownAyats model.surahNumber model.surahRoots model.surahs model.known
+    in
+    column [] <| map (\( ai, ayat ) -> row [] [ lazy printAyatNumber <| ai, text ayat, text (Maybe.withDefault "" <| Array.get (ai - 1) <| Array.fromList model.translations) ]) ayats
+
+
 viewHeader : Model -> Element Msg
 viewHeader model =
     let
@@ -612,6 +659,7 @@ viewHeader model =
     row [ width fill, paddingXY 0 10, spacing 10 ] <|
         [ el [] <| text "Home"
         , link [] <| { url = "/known", label = text "Known" }
+        , link [] <| { url = "/export", label = text "Export" }
         , el [] <| text "Options"
         , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromFloat percentage ++ "%")
         ]
@@ -888,6 +936,32 @@ scrollToWord loc =
         --    |>  Dom.getViewportOf id
         --      |> Task.andThen (\info -> Dom.setViewportOf id 0 info.scene.height)
         |> Task.attempt (\_ -> NoOp)
+
+
+getKnownAyats : Int -> SurahRoots -> SurahData -> Known -> List ( Index, String )
+getKnownAyats si (SurahRoots surahs) surahsData known =
+    let
+        getAyats : Ayats
+        getAyats =
+            Maybe.withDefault (Ayats Dict.empty) <| Dict.get si surahs
+
+        filterKnownAyats : Ayats -> Ayats
+        filterKnownAyats (Ayats ayats) =
+            Ayats <| Dict.filter isKnownAyat ayats
+
+        isKnownAyat : Int -> Tokens -> Bool
+        isKnownAyat _ (Tokens tokens) =
+            tokens == Dict.filter isKnownRoot tokens
+
+        isKnownRoot : Int -> Root -> Bool
+        isKnownRoot _ root =
+            Dict.member root known
+
+        toAyatStrings : Ayats -> List ( Index, String )
+        toAyatStrings (Ayats ayats) =
+            filter (\( i, _ ) -> Dict.member i ayats) <| indexBy1 <| List.indexedMap Tuple.pair <| Maybe.withDefault [] (Dict.get si surahsData)
+    in
+    toAyatStrings <| filterKnownAyats getAyats
 
 
 
