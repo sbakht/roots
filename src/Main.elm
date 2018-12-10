@@ -91,9 +91,9 @@ decodeProgress =
     Decode.map Dict.fromList dataDecode
 
 
-decodeTranslations : Decoder (List String)
+decodeTranslations : Decoder (List (List String))
 decodeTranslations =
-    field "data" <| field "ayahs" <| list <| field "text" string
+    field "data" <| field "surahs" <| list <| field "ayahs" <| list <| field "text" string
 
 
 decodeLocations : Decoder RootsData
@@ -130,10 +130,18 @@ decodeLocations =
 
 decodeSurah : Int -> SurahData -> Decoder SurahData
 decodeSurah surahNum surahData =
-    Decode.keyValuePairs string
-        |> field "verse"
-        |> Decode.map (map second)
+    --    Decode.keyValuePairs string
+    --        |> field "verse"
+    --        |> Decode.map (map second)
+    --        |> Decode.map (mkSurahData surahNum surahData)
+    (field "data" <| field "ayahs" <| list <| field "text" string)
         |> Decode.map (mkSurahData surahNum surahData)
+
+
+decodeAllSurahs : Decoder SurahData
+decodeAllSurahs =
+    (field "data" <| field "surahs" <| list <| field "ayahs" <| list <| field "text" string)
+        |> Decode.map (\x -> List.foldl (\( surahNum, strArr ) surahData -> mkSurahData surahNum surahData strArr) Dict.empty <| indexBy1 <| List.indexedMap Tuple.pair x)
 
 
 mkSurahData : Int -> SurahData -> List String -> SurahData
@@ -142,8 +150,21 @@ mkSurahData surahNum surahData listOfSurahRoots =
 
 
 formatSurahText : List String -> List String
-formatSurahText =
-    dropBasmalah
+formatSurahText arr =
+    let
+        removeBas : String -> List String
+        removeBas x =
+            String.split "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ " x
+    in
+    List.indexedMap
+        (\i x ->
+            if i == 0 then
+                Maybe.withDefault "" <| head <| drop 1 <| removeBas x
+
+            else
+                x
+        )
+        arr
 
 
 dropBasmalah : List String -> List String
@@ -170,16 +191,23 @@ rootsToLocationsUrl =
 
 
 surahsUrl =
-    "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah/surah_"
+    --    "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah/surah_"
+    "http://api.alquran.cloud/surah/"
 
 
 translationUrl s =
-    "http://api.alquran.cloud/surah/" ++ fromInt s ++ "/en.sahih"
+    --    "http://localhost:3001/surah?surahNum=" ++ (String.join "," <| map fromInt s)
+    "http://api.alquran.cloud/quran/en.sahih"
+
+
+allSurahsUrl =
+    "http://api.alquran.cloud/quran/quran-uthmani"
 
 
 getSurahRequestUrl : Int -> String
 getSurahRequestUrl surahNumber =
-    surahsUrl ++ fromInt surahNumber ++ ".json"
+    --    surahsUrl ++ fromInt surahNumber ++ ".json"
+    surahsUrl ++ fromInt surahNumber
 
 
 wordsCmd : Cmd Msg
@@ -196,11 +224,18 @@ surahCmd surahNum surahData =
         |> Http.send LoadSurah
 
 
-translationCmd : Int -> Cmd Msg
-translationCmd surahNum =
+translationCmd : List Int -> Cmd Msg
+translationCmd surahNums =
     decodeTranslations
-        |> Http.get (translationUrl surahNum)
+        |> Http.get (translationUrl surahNums)
         |> Http.send LoadTranslations
+
+
+allSurahsCmd : Cmd Msg
+allSurahsCmd =
+    decodeAllSurahs
+        |> Http.get allSurahsUrl
+        |> Http.send LoadSurah
 
 
 
@@ -217,7 +252,7 @@ type alias Model =
     , surahNumber : Int
     , activeWordDetails : ActiveWordDetails
     , page : String
-    , translations : List String
+    , translations : SurahData
     }
 
 
@@ -232,7 +267,7 @@ init sessionProgress url key =
       , surahNumber = tempSurahNumber
       , activeWordDetails = Nothing
       , page = "Home"
-      , translations = []
+      , translations = Dict.empty
       }
     , surahCmd tempSurahNumber Dict.empty
     )
@@ -354,7 +389,7 @@ type Msg
     = SetKnown Root (Maybe Progress)
     | LoadSurah (Result Http.Error SurahData)
     | LoadRootsData (Result Http.Error RootsData)
-    | LoadTranslations (Result Http.Error (List String))
+    | LoadTranslations (Result Http.Error (List (List String)))
     | SetActiveDetails ( Root, Location )
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
@@ -436,13 +471,9 @@ update msg model =
             ( model, Cmd.none )
 
         LoadTranslations (Ok translations) ->
-            ( { model | translations = Debug.log "eeee" translations }, Cmd.none )
+            ( { model | translations = Dict.fromList <| indexBy1 <| List.indexedMap Tuple.pair translations }, Cmd.none )
 
-        LoadTranslations d ->
-            let
-                x =
-                    Debug.log "df" d
-            in
+        LoadTranslations _ ->
             ( model, Cmd.none )
 
         LinkClicked urlRequest ->
@@ -489,7 +520,7 @@ update msg model =
                     ( { model | page = "Known" }, Cmd.none )
 
                 ExportPage ->
-                    ( { model | page = "Export" }, translationCmd model.surahNumber )
+                    ( { model | page = "Export" }, Cmd.batch [ translationCmd <| surahListWithCompleteAyats model.surahRoots model.known, allSurahsCmd ] )
 
                 Null ->
                     ( model, Cmd.none )
@@ -627,11 +658,25 @@ viewKnown model =
 viewCSV : Model -> Element Msg
 viewCSV model =
     let
-        ayats : List ( Index, String )
-        ayats =
-            getKnownAyats model.surahNumber model.surahRoots model.surahs model.known
+        surahsToDo : List Int
+        surahsToDo =
+            surahListWithCompleteAyats model.surahRoots model.known
+
+        surahData : Index -> List ( Index, String )
+        surahData i =
+            getKnownAyats i model.surahRoots model.surahs model.known
+
+        translationBySurah surahIndex =
+            Maybe.withDefault [] <| Dict.get surahIndex <| model.translations
+
+        translation surahIndex ai =
+            Maybe.withDefault "" <| Array.get (ai - 1) <| Array.fromList <| translationBySurah surahIndex
+
+        outputPerSurah : Index -> List ( Index, String ) -> List (Element Msg)
+        outputPerSurah surahIndex list =
+            map (\( ai, ayat ) -> paragraph [] (List.intersperse (text "\t") [ text ayat, text (translation surahIndex ai), text (fromInt ai), text ("Surah" ++ fromInt surahIndex) ])) list
     in
-    column [] <| map (\( ai, ayat ) -> row [] [ lazy printAyatNumber <| ai, text ayat, text (Maybe.withDefault "" <| Array.get (ai - 1) <| Array.fromList model.translations) ]) ayats
+    column [] <| concat <| map (\i -> outputPerSurah i (surahData i)) <| List.range 1 144
 
 
 viewHeader : Model -> Element Msg
@@ -662,6 +707,7 @@ viewHeader model =
         , link [] <| { url = "/export", label = text "Export" }
         , el [] <| text "Options"
         , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromFloat percentage ++ "%")
+        , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromInt <| countKnownAyats model.surahNumber model.surahRoots model.known)
         ]
 
 
@@ -736,9 +782,9 @@ addWhenYaa curr accum =
         curr :: accum
 
 
-indexBy1 : List ( Int, String ) -> List ( Int, String )
+indexBy1 : List ( Int, a ) -> List ( Int, a )
 indexBy1 =
-    map (\( i, s ) -> ( i + 1, s ))
+    map (\( i, a ) -> ( i + 1, a ))
 
 
 wordColor : Maybe Progress -> Bool -> Attr decorative Msg
@@ -962,6 +1008,43 @@ getKnownAyats si (SurahRoots surahs) surahsData known =
             filter (\( i, _ ) -> Dict.member i ayats) <| indexBy1 <| List.indexedMap Tuple.pair <| Maybe.withDefault [] (Dict.get si surahsData)
     in
     toAyatStrings <| filterKnownAyats getAyats
+
+
+surahListWithCompleteAyats : SurahRoots -> Known -> List Int
+surahListWithCompleteAyats (SurahRoots surahs) known =
+    let
+        filterKnownAyats : Index -> Ayats -> Bool
+        filterKnownAyats i (Ayats ayats) =
+            (Dict.size <| Dict.filter isKnownAyat ayats) > 0
+
+        -- improve to break on first find
+        isKnownAyat : Int -> Tokens -> Bool
+        isKnownAyat _ (Tokens tokens) =
+            tokens == Dict.filter isKnownRoot tokens
+
+        isKnownRoot : Int -> Root -> Bool
+        isKnownRoot _ root =
+            Dict.member root known
+    in
+    Dict.keys <| Dict.filter filterKnownAyats surahs
+
+
+countKnownAyats : Int -> SurahRoots -> Known -> Int
+countKnownAyats si (SurahRoots surahs) known =
+    let
+        filterKnownAyats : Ayats -> Int
+        filterKnownAyats (Ayats ayats) =
+            Dict.size <| Dict.filter isKnownAyat ayats
+
+        isKnownAyat : Int -> Tokens -> Bool
+        isKnownAyat _ (Tokens tokens) =
+            tokens == Dict.filter isKnownRoot tokens
+
+        isKnownRoot : Int -> Root -> Bool
+        isKnownRoot _ root =
+            Dict.member root known
+    in
+    List.sum <| map filterKnownAyats <| Dict.values surahs
 
 
 
