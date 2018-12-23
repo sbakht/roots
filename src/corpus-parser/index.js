@@ -3,9 +3,18 @@ var fs = require('fs');
 var request = require('request');
 var cheerio = require('cheerio');
 var app = express();
+const cors = require('cors');
 let baseUrl = 'http://corpus.quran.com/qurandictionary.jsp?q=';
 let count = 0;
 let captureRoots;
+
+app.use(cors());
+// to change your ports for different cors stuff:
+app.set('port', process.env.PORT || 3001);
+app.listen(app.get('port'), function() {
+  console.log('we are listening on: ',
+  app.get('port'))
+});
 
 app.get('/scrape', function(req, res) {
     let pageRoots = req.query.roots;
@@ -35,7 +44,18 @@ app.get('/scrape', function(req, res) {
     })
     res.send('Check your console!')
 })
-app.listen('3000');
+
+app.get('/surah', function(req, res) {
+    const surahNum = req.query.surahNum;
+    request({
+        url: "http://api.alquran.cloud/surah/" + surahNum + "/en.sahih",
+    }, function(error, response, json) {
+        res.setHeader('Content-Type', 'application/json');
+        res.send(json);
+    });
+});
+
+//app.listen('3001');
 
 function writeToFile(json, text) {
     fs.writeFile('output.json', JSON.stringify(json, null, 4), function(err) {

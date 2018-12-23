@@ -1,18 +1,20 @@
 port module Main exposing (main)
 
 import Array exposing (Array)
-import Browser
+import Browser exposing (UrlRequest)
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, link, maximum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, html, link, maximum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
 import Element.Background as Background
 import Element.Events as Events exposing (onClick)
 import Element.Font as Font
 import Element.Input as Input
 import Element.Lazy exposing (lazy, lazy3)
 import EncodeString exposing (encode)
-import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_)
+import Html
+import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_, value)
+import Html.Events exposing (onInput)
 import Http
 import Json.Decode as Decode exposing (Decoder, Value, field, int, list, string)
 import List exposing (concat, drop, filter, head, length, map)
@@ -394,6 +396,7 @@ type Msg
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
     | ToggleOverlayGroup Int Root
+    | PushUrl String
     | NoOp
 
 
@@ -524,6 +527,9 @@ update msg model =
 
                 Null ->
                     ( model, Cmd.none )
+
+        PushUrl url ->
+            ( model, Nav.pushUrl model.key url )
 
         ToggleOverlayGroup index root ->
             let
@@ -700,12 +706,15 @@ viewHeader model =
                 |> floor
                 |> toFloat
                 |> (\x -> x / 100)
+
+        updateUrl url = PushUrl <| "/" ++ url
     in
     row [ width fill, paddingXY 0 10, spacing 10 ] <|
         [ el [] <| text "Home"
         , link [] <| { url = "/known", label = text "Known" }
         , link [] <| { url = "/export", label = text "Export" }
         , el [] <| text "Options"
+        , el [  ] <| html <| Html.select [onInput updateUrl] <| map (\x -> Html.option [value (fromInt x)] [Html.a [ href ("/" ++ fromInt x)] [Html.text ("Surah " ++ fromInt x)]]) <| List.range 1 144
         , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromFloat percentage ++ "%")
         , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromInt <| countKnownAyats model.surahNumber model.surahRoots model.known)
         ]
