@@ -194,16 +194,16 @@ rootsToLocationsUrl =
 
 surahsUrl =
     --    "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah/surah_"
-    "http://api.alquran.cloud/surah/"
+    "https://api.alquran.cloud/surah/"
 
 
 translationUrl s =
     --    "http://localhost:3001/surah?surahNum=" ++ (String.join "," <| map fromInt s)
-    "http://api.alquran.cloud/quran/en.sahih"
+    "https://api.alquran.cloud/quran/en.sahih"
 
 
 allSurahsUrl =
-    "http://api.alquran.cloud/quran/quran-uthmani"
+    "https://api.alquran.cloud/quran/quran-uthmani"
 
 
 getSurahRequestUrl : Int -> String
