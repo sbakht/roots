@@ -5,7 +5,7 @@ import Browser exposing (UrlRequest)
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, html, link, maximum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, html, htmlAttribute, link, maximum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
 import Element.Background as Background
 import Element.Events as Events exposing (onClick)
 import Element.Font as Font
@@ -796,20 +796,21 @@ indexBy1 =
     map (\( i, a ) -> ( i + 1, a ))
 
 
-wordColor : Maybe Progress -> Bool -> Attr decorative Msg
+wordColor : Maybe Progress -> Bool -> Element.Attribute Msg
 wordColor isKnown isLearnable =
-    case ( isKnown, isLearnable ) of
-        ( Just Learned, _ ) ->
-            learnedColor
+    htmlAttribute <| class <|
+        case ( isKnown, isLearnable ) of
+            ( Just Learned, _ ) ->
+                "learned-word"
 
-        ( Just Learning, True ) ->
-            learningColor
+            ( Just Learning, True ) ->
+                "learning-word"
 
-        ( Nothing, True ) ->
-            notLearnedColor
+            ( Nothing, True ) ->
+                "unknown-word"
 
-        ( _, _ ) ->
-            Font.color <| Element.rgb 0 0 0
+            ( _, _ ) ->
+                "no-root-word"
 
 
 viewWord : Int -> ActiveWordDetails -> Known -> Tokens -> Int -> ( Int, String ) -> Element Msg
@@ -828,23 +829,24 @@ viewWord surahNumber activeWordDetails known tokens ai ( wi, w ) =
             locationToUrl ( surahNumber, ai, wi )
 
         backgroundColor =
-            case activeWordDetails of
-                Just ( r, ( a, b, c ) ) ->
-                    if b == ai && c == wi then
-                        hoverClickedBackground
+            htmlAttribute <| class <|
+                case activeWordDetails of
+                    Just ( r, ( a, b, c ) ) ->
+                        if b == ai && c == wi then
+                            "clicked-active-root"
 
-                    else if r == root then
-                        hoverBackground
+                        else if r == root then
+                            "active-root"
 
-                    else
-                        pageBackground
+                        else
+                            ""
 
-                _ ->
-                    pageBackground
+                    _ ->
+                        ""
 
         stuff knowned learnable bgColor =
             if isLearnable == True then
-                Element.link [ wordColor knowned learnable, mouseOver [ hoverClickedBackground ], bgColor, padding 5 ] <|
+                Element.link [ wordColor knowned learnable,  bgColor, padding 5 ] <|
                     { url = path, label = text (w ++ " " ++ "") }
 
             else

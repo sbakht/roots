@@ -1,0 +1,28 @@
+
+.unknown-word {
+    color: rgb(224, 122, 95) !important;
+}
+
+.learning-word {
+    color: rgb(0, 0, 255) !important;
+}
+
+.learned-word {
+    color: rgb(61, 64, 91) !important;
+}
+
+a:hover {
+    background-color: rgb(242, 204, 143) !important;
+}
+
+
+.clicked-active-root {
+    background-color: rgb(242, 204, 143) !important;
+}
+
+.active-root {
+    background-color: rgb(242, 204, 143) !important;
+}
+
+
+
