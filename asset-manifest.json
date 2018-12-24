@@ -1,11 +1,11 @@
 {
-  "main.css": "https://sbakht.github.com/roots/static/css/main.a5e8a163.chunk.css",
-  "main.js": "https://sbakht.github.com/roots/static/js/main.38957e82.chunk.js",
-  "main.css.map": "https://sbakht.github.com/roots/static/css/main.a5e8a163.chunk.css.map",
-  "main.js.map": "https://sbakht.github.com/roots/static/js/main.38957e82.chunk.js.map",
-  "vendors~main.js": "https://sbakht.github.com/roots/static/js/vendors~main.f8b4eb45.chunk.js",
-  "vendors~main.js.map": "https://sbakht.github.com/roots/static/js/vendors~main.f8b4eb45.chunk.js.map",
-  "runtime~main.js": "https://sbakht.github.com/roots/static/js/runtime~main.5fd1809f.js",
-  "runtime~main.js.map": "https://sbakht.github.com/roots/static/js/runtime~main.5fd1809f.js.map",
-  "index.html": "https://sbakht.github.com/roots/index.html"
+  "main.css": "https://sbakht.github.io/roots/static/css/main.a5e8a163.chunk.css",
+  "main.js": "https://sbakht.github.io/roots/static/js/main.bf04aa16.chunk.js",
+  "main.css.map": "https://sbakht.github.io/roots/static/css/main.a5e8a163.chunk.css.map",
+  "main.js.map": "https://sbakht.github.io/roots/static/js/main.bf04aa16.chunk.js.map",
+  "vendors~main.js": "https://sbakht.github.io/roots/static/js/vendors~main.f8b4eb45.chunk.js",
+  "vendors~main.js.map": "https://sbakht.github.io/roots/static/js/vendors~main.f8b4eb45.chunk.js.map",
+  "runtime~main.js": "https://sbakht.github.io/roots/static/js/runtime~main.707198f5.js",
+  "runtime~main.js.map": "https://sbakht.github.io/roots/static/js/runtime~main.707198f5.js.map",
+  "index.html": "https://sbakht.github.io/roots/index.html"
 }
