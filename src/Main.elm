@@ -738,7 +738,7 @@ viewSurahName si surahData =
 
 viewSurah : Model -> Element Msg
 viewSurah model =
-    column [ height (fill |> maximum contentHeight), width fill, spacing 20, scrollbarY ]
+    column [ height (fill |> maximum contentHeight), width fill, spacing 20, paddingXY 0 10, scrollbarY ]
         (Dict.get model.surahNumber model.surahs
             |> Maybe.map second
             |> Maybe.withDefault []
@@ -750,7 +750,7 @@ viewSurah model =
 
 viewAyat : Model -> ( Int, String ) -> Element Msg
 viewAyat model ( ai, ayatString ) =
-    row [ spacing 5 ] [ lazy printAyatNumber <| ai, printAyat model ( ai, ayatString ) ]
+    row [ spacingXY 5 20 ] [ lazy printAyatNumber <| ai, printAyat model ( ai, ayatString ) ]
 
 
 printAyat : Model -> ( Int, String ) -> Element Msg
@@ -775,7 +775,7 @@ printAyat model ( ai, ayatString ) =
         |> Array.toIndexedList
         |> indexBy1
         |> map (viewWord model.surahNumber model.activeWordDetails model.known tokens ai)
-        |> Element.paragraph [ arabicFontSize, Font.family [ Font.typeface "KFGQPC Uthman Taha Naskh" ] ]
+        |> Element.paragraph [ arabicFontSize, spacingXY 0 20, Font.family [ Font.typeface "KFGQPC Uthman Taha Naskh" ] ]
 
 
 printAyatNumber : Int -> Element Msg
