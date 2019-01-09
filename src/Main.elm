@@ -16,7 +16,8 @@ import Html
 import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_, value)
 import Html.Events exposing (onInput)
 import Http
-import Json.Decode as Decode exposing (Decoder, Value, field, int, list, string)
+import Json.Decode as Decode exposing (Decoder, Value, at, field, int, list, string, succeed)
+import Json.Decode.Pipeline exposing (hardcoded, optional, required, requiredAt)
 import List exposing (concat, drop, filter, head, length, map)
 import String exposing (dropLeft, dropRight, fromChar, fromFloat, fromInt, split, toInt)
 import Task
@@ -95,7 +96,8 @@ decodeProgress =
 
 decodeTranslations : Decoder (List (List String))
 decodeTranslations =
-    field "data" <| field "surahs" <| list <| field "ayahs" <| list <| field "text" string
+    --    field "data" <| field "surahs" <| list <| field "ayahs" <| list <| field "text" string
+    at [ "data", "surahs" ] (list <| at [ "ayahs" ] <| list <| field "text" string)
 
 
 decodeLocations : Decoder RootsData
@@ -132,23 +134,20 @@ decodeLocations =
 
 decodeSurah : Int -> SurahData -> Decoder SurahData
 decodeSurah surahNum surahData =
-    --    Decode.keyValuePairs string
-    --        |> field "verse"
-    --        |> Decode.map (map second)
-    --        |> Decode.map (mkSurahData surahNum surahData)
-    (field "data" <| field "ayahs" <| list <| field "text" string)
-        |> Decode.map (mkSurahData surahNum surahData)
+    succeed (mkSurahData surahNum surahData)
+        |> requiredAt [ "data", "englishName" ] string
+        |> requiredAt [ "data", "ayahs" ] (list <| field "text" string)
 
 
 decodeAllSurahs : Decoder SurahData
 decodeAllSurahs =
-    (field "data" <| field "surahs" <| list <| field "ayahs" <| list <| field "text" string)
-        |> Decode.map (\x -> List.foldl (\( surahNum, strArr ) surahData -> mkSurahData surahNum surahData strArr) Dict.empty <| indexBy1 <| List.indexedMap Tuple.pair x)
+    succeed (\x -> List.foldl (\( surahNum, strArr ) surahData -> mkSurahData surahNum surahData "" strArr) Dict.empty <| indexBy1 <| List.indexedMap Tuple.pair x)
+        |> requiredAt [ "data", "surahs" ] (list <| at [ "ayahs" ] <| list <| field "text" string)
 
 
-mkSurahData : Int -> SurahData -> List String -> SurahData
-mkSurahData surahNum surahData listOfSurahRoots =
-    Dict.insert surahNum (formatSurahText listOfSurahRoots) surahData
+mkSurahData : Int -> SurahData -> String -> List String -> SurahData
+mkSurahData surahNum surahData name listOfSurahRoots =
+    Dict.insert surahNum ( name, formatSurahText listOfSurahRoots ) surahData
 
 
 formatSurahText : List String -> List String
@@ -252,9 +251,10 @@ type alias Model =
     , rootsData : RootsData
     , known : Known
     , surahNumber : Int
+    , surahName : String
     , activeWordDetails : ActiveWordDetails
     , page : String
-    , translations : SurahData
+    , translations : TranslationsData
     }
 
 
@@ -267,6 +267,7 @@ init sessionProgress url key =
       , rootsData = Dict.empty
       , known = Result.withDefault Dict.empty <| Decode.decodeValue decodeProgress sessionProgress
       , surahNumber = tempSurahNumber
+      , surahName = "Test Name"
       , activeWordDetails = Nothing
       , page = "Home"
       , translations = Dict.empty
@@ -293,6 +294,10 @@ type Progress
 
 
 type alias SurahData =
+    Dict Int ( String, List String )
+
+
+type alias TranslationsData =
     Dict Int (List String)
 
 
@@ -593,6 +598,10 @@ hoverClickedBackground =
     Background.color <| rgb255 242 204 143
 
 
+colorGreen =
+    Font.color <| rgb 0 255 0
+
+
 contentHeight =
     900
 
@@ -707,23 +716,31 @@ viewHeader model =
                 |> toFloat
                 |> (\x -> x / 100)
 
-        updateUrl url = PushUrl <| "/" ++ url
+        updateUrl url =
+            PushUrl <| "/" ++ url
     in
     row [ width fill, paddingXY 0 10, spacing 10 ] <|
         [ el [] <| text "Home"
         , link [] <| { url = "/known", label = text "Known" }
         , link [] <| { url = "/export", label = text "Export" }
         , el [] <| text "Options"
-        , el [  ] <| html <| Html.select [onInput updateUrl] <| map (\x -> Html.option [value (fromInt x)] [Html.a [ href ("/" ++ fromInt x)] [Html.text ("Surah " ++ fromInt x)]]) <| List.range 1 144
-        , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromFloat percentage ++ "%")
-        , el [ alignRight, Font.color <| rgb 0 255 0 ] <| text (fromInt <| countKnownAyats model.surahNumber model.surahRoots model.known)
+        , el [] <| html <| Html.select [ onInput updateUrl ] <| map (\x -> Html.option [ value (fromInt x) ] [ Html.a [ href ("/" ++ fromInt x) ] [ Html.text ("Surah " ++ fromInt x) ] ]) <| List.range 1 144
+        , viewSurahName model.surahNumber model.surahs
+        , el [ alignRight, colorGreen ] <| text (fromFloat percentage ++ "%")
+        , el [ alignRight, colorGreen ] <| text (fromInt <| countKnownAyats model.surahNumber model.surahRoots model.known)
         ]
+
+
+viewSurahName : Int -> SurahData -> Element Msg
+viewSurahName si surahData =
+    el [ centerX, colorGreen ] <| text (Maybe.withDefault "" <| Maybe.map first <| Dict.get si surahData)
 
 
 viewSurah : Model -> Element Msg
 viewSurah model =
     column [ height (fill |> maximum contentHeight), width fill, spacing 20, scrollbarY ]
         (Dict.get model.surahNumber model.surahs
+            |> Maybe.map second
             |> Maybe.withDefault []
             |> List.indexedMap Tuple.pair
             |> indexBy1
@@ -798,19 +815,20 @@ indexBy1 =
 
 wordColor : Maybe Progress -> Bool -> Element.Attribute Msg
 wordColor isKnown isLearnable =
-    htmlAttribute <| class <|
-        case ( isKnown, isLearnable ) of
-            ( Just Learned, _ ) ->
-                "learned-word"
+    htmlAttribute <|
+        class <|
+            case ( isKnown, isLearnable ) of
+                ( Just Learned, _ ) ->
+                    "learned-word"
 
-            ( Just Learning, True ) ->
-                "learning-word"
+                ( Just Learning, True ) ->
+                    "learning-word"
 
-            ( Nothing, True ) ->
-                "unknown-word"
+                ( Nothing, True ) ->
+                    "unknown-word"
 
-            ( _, _ ) ->
-                "no-root-word"
+                ( _, _ ) ->
+                    "no-root-word"
 
 
 viewWord : Int -> ActiveWordDetails -> Known -> Tokens -> Int -> ( Int, String ) -> Element Msg
@@ -829,24 +847,25 @@ viewWord surahNumber activeWordDetails known tokens ai ( wi, w ) =
             locationToUrl ( surahNumber, ai, wi )
 
         backgroundColor =
-            htmlAttribute <| class <|
-                case activeWordDetails of
-                    Just ( r, ( a, b, c ) ) ->
-                        if b == ai && c == wi then
-                            "clicked-active-root"
+            htmlAttribute <|
+                class <|
+                    case activeWordDetails of
+                        Just ( r, ( a, b, c ) ) ->
+                            if b == ai && c == wi then
+                                "clicked-active-root"
 
-                        else if r == root then
-                            "active-root"
+                            else if r == root then
+                                "active-root"
 
-                        else
+                            else
+                                ""
+
+                        _ ->
                             ""
-
-                    _ ->
-                        ""
 
         stuff knowned learnable bgColor =
             if isLearnable == True then
-                Element.link [ wordColor knowned learnable,  bgColor, padding 5 ] <|
+                Element.link [ wordColor knowned learnable, bgColor, padding 5 ] <|
                     { url = path, label = text (w ++ " " ++ "") }
 
             else
@@ -1016,7 +1035,7 @@ getKnownAyats si (SurahRoots surahs) surahsData known =
 
         toAyatStrings : Ayats -> List ( Index, String )
         toAyatStrings (Ayats ayats) =
-            filter (\( i, _ ) -> Dict.member i ayats) <| indexBy1 <| List.indexedMap Tuple.pair <| Maybe.withDefault [] (Dict.get si surahsData)
+            filter (\( i, _ ) -> Dict.member i ayats) <| indexBy1 <| List.indexedMap Tuple.pair <| Maybe.withDefault [] <| Maybe.map second <| Dict.get si surahsData
     in
     toAyatStrings <| filterKnownAyats getAyats
 
