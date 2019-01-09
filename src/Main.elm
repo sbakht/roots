@@ -94,10 +94,14 @@ decodeProgress =
     Decode.map Dict.fromList dataDecode
 
 
+textList : Decoder (List String)
+textList =
+    list (field "text" string)
+
+
 decodeTranslations : Decoder (List (List String))
 decodeTranslations =
-    --    field "data" <| field "surahs" <| list <| field "ayahs" <| list <| field "text" string
-    at [ "data", "surahs" ] (list <| at [ "ayahs" ] <| list <| field "text" string)
+    at [ "data", "surahs" ] (list <| at [ "ayahs" ] textList)
 
 
 decodeLocations : Decoder RootsData
@@ -136,13 +140,13 @@ decodeSurah : Int -> SurahData -> Decoder SurahData
 decodeSurah surahNum surahData =
     succeed (mkSurahData surahNum surahData)
         |> requiredAt [ "data", "englishName" ] string
-        |> requiredAt [ "data", "ayahs" ] (list <| field "text" string)
+        |> requiredAt [ "data", "ayahs" ] textList
 
 
 decodeAllSurahs : Decoder SurahData
 decodeAllSurahs =
     succeed (\x -> List.foldl (\( surahNum, strArr ) surahData -> mkSurahData surahNum surahData "" strArr) Dict.empty <| indexBy1 <| List.indexedMap Tuple.pair x)
-        |> requiredAt [ "data", "surahs" ] (list <| at [ "ayahs" ] <| list <| field "text" string)
+        |> requiredAt [ "data", "surahs" ] (list <| at [ "ayahs" ] textList)
 
 
 mkSurahData : Int -> SurahData -> String -> List String -> SurahData
