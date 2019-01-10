@@ -689,7 +689,14 @@ viewCSV model =
             Maybe.withDefault [] <| Dict.get surahIndex <| model.translations
 
         translation surahIndex ai =
-            Maybe.withDefault "" <| Array.get (ai - 1) <| Array.fromList <| translationBySurah surahIndex
+            replaceMultiAyatQuote <| Maybe.withDefault "" <| Array.get (ai - 1) <| Array.fromList <| translationBySurah surahIndex
+
+        replaceMultiAyatQuote str =
+            if String.startsWith "\"" str && (remainderBy 2 (length <| String.indexes "\"" str) > 0) then
+                "'" ++ String.dropLeft 1 str
+
+            else
+                str
 
         outputPerSurah : Index -> List ( Index, String ) -> List (Element Msg)
         outputPerSurah surahIndex list =
