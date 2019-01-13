@@ -31,7 +31,6 @@ import Url.Parser as UrlParser exposing ((</>), Parser, int, oneOf, parse, s, to
 {-
    scroll drawer to top on click
    scroll to ayat on page load
-   basmalah is ayat on first surah
    find surah without basmalah
    ayats with star end messed up data
    get more data
@@ -161,14 +160,23 @@ mkSurahData surahNum surahData name listOfSurahRoots =
 formatSurahText : List String -> List String
 formatSurahText arr =
     let
-        removeBas : String -> List String
+        removeBas : String -> String
         removeBas x =
-            String.split "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ " x
+            String.join "" <|
+                (\y ->
+                    if length y > 1 then
+                        drop 1 y
+
+                    else
+                        y
+                )
+                <|
+                    String.split "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ " x
     in
     List.indexedMap
         (\i x ->
             if i == 0 then
-                Maybe.withDefault "" <| head <| drop 1 <| removeBas x
+                removeBas x
 
             else
                 x
@@ -762,7 +770,12 @@ viewSurah model =
     column [ height (fill |> maximum contentHeight), width fill, spacing 20, paddingXY 0 10, scrollbarY ]
         (case Dict.get model.surahNumber model.surahs of
             Just surah ->
-                viewBasmalah
+                (if model.surahNumber /= 9 then
+                    viewBasmalah
+
+                 else
+                    none
+                )
                     :: (surah
                             |> second
                             |> List.indexedMap Tuple.pair
