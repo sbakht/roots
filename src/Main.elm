@@ -13,7 +13,7 @@ import Element.Input as Input
 import Element.Lazy exposing (lazy, lazy3)
 import EncodeString exposing (encode)
 import Html
-import Html.Attributes exposing (checked, class, classList, for, href, id, name, type_, value)
+import Html.Attributes exposing (checked, class, classList, for, href, id, name, selected, type_, value)
 import Html.Events exposing (onInput)
 import Http
 import Json.Decode as Decode exposing (Decoder, Value, at, field, int, list, string, succeed)
@@ -151,7 +151,11 @@ decodeAllSurahs =
 
 mkSurahData : Int -> SurahData -> String -> List String -> SurahData
 mkSurahData surahNum surahData name listOfSurahRoots =
-    Dict.insert surahNum ( name, formatSurahText listOfSurahRoots ) surahData
+    if surahNum == 1 then
+        Dict.insert surahNum ( name, drop 1 <| formatSurahText listOfSurahRoots ) surahData
+
+    else
+        Dict.insert surahNum ( name, formatSurahText listOfSurahRoots ) surahData
 
 
 formatSurahText : List String -> List String
@@ -735,7 +739,7 @@ viewHeader model =
         , link [] <| { url = "/known", label = text "Known" }
         , link [] <| { url = "/export", label = text "Export" }
         , el [] <| text "Options"
-        , el [] <| html <| Html.select [ onInput updateUrl ] <| map (\x -> Html.option [ value (fromInt x) ] [ Html.a [ href ("/" ++ fromInt x) ] [ Html.text ("Surah " ++ fromInt x) ] ]) <| List.range 1 144
+        , el [] <| html <| Html.select [ onInput updateUrl ] <| map (\x -> Html.option [ value (fromInt x), selected (x == model.surahNumber) ] [ Html.a [ href ("/" ++ fromInt x) ] [ Html.text ("Surah " ++ fromInt x) ] ]) <| List.range 1 144
         , viewSurahName model.surahNumber model.surahs
         , el [ alignRight, colorGreen ] <| text (fromFloat percentage ++ "%")
         , el [ alignRight, colorGreen ] <| text (fromInt <| countKnownAyats model.surahNumber model.surahRoots model.known)
@@ -752,17 +756,23 @@ viewSurah model =
     column [ height (fill |> maximum contentHeight), width fill, spacing 20, paddingXY 0 10, scrollbarY ]
         (case Dict.get model.surahNumber model.surahs of
             Just surah ->
-                viewBasmalah :: (surah
-                    |> second
-                    |> List.indexedMap Tuple.pair
-                    |> indexBy1
-                    |> map (viewAyat model))
+                viewBasmalah
+                    :: (surah
+                            |> second
+                            |> List.indexedMap Tuple.pair
+                            |> indexBy1
+                            |> map (viewAyat model)
+                       )
+
             Nothing ->
                 []
         )
 
+
 viewBasmalah : Element Msg
-viewBasmalah = el [centerX, width (fill |> maximum 500), arabicFontSize, Font.family [ Font.typeface "KFGQPC Uthman Taha Naskh" ] ] (text "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيم")
+viewBasmalah =
+    el [ centerX, width (fill |> maximum 500), arabicFontSize, Font.family [ Font.typeface "KFGQPC Uthman Taha Naskh" ] ] (text "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيم")
+
 
 viewAyat : Model -> ( Int, String ) -> Element Msg
 viewAyat model ( ai, ayatString ) =
