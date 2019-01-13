@@ -714,13 +714,18 @@ viewCSV model =
         outputPerSurah surahIndex list =
             map (\( ai, ayat ) -> String.join "\t" [ ayat, translation surahIndex ai, fromInt ai, "Surah" ++ fromInt surahIndex ]) list
     in
-    multiline [ height (fill |> minimum 500) ]
-        { onChange = \_ -> NoOp
-        , text = String.join "\n" <| concat <| map (\i -> outputPerSurah i (surahData i)) <| List.range 1 144
-        , placeholder = Nothing
-        , label = labelAbove [] (text "Import To Anki Flashcard Program:")
-        , spellcheck = False
-        }
+    column [ width fill, padding 10 ]
+        [ multiline [ height (fill |> minimum 500) ]
+            { onChange = \_ -> NoOp
+            , text = String.join "\n" <| concat <| map (\i -> outputPerSurah i (surahData i)) <| List.range 1 144
+            , placeholder = Nothing
+            , label = labelAbove [] (text "Import To Anki Flashcard Program:")
+            , spellcheck = False
+            }
+        , paragraph [ centerX, paddingXY 10 20, width (fill |> maximum 900) ] [ text """These are all the ayat that you have marked all their words' roots as learning or learned. This can be imported into a
+            flashcard program like Anki so you can practice translating. This is a csv (comma separated values) file, separated by tabs. The 3rd column
+            is the ayat number and the 4th is Surah number which can be used as tags in Anki.""" ]
+        ]
 
 
 viewHeader : Model -> Element Msg
