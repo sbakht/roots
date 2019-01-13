@@ -750,14 +750,19 @@ viewSurahName si surahData =
 viewSurah : Model -> Element Msg
 viewSurah model =
     column [ height (fill |> maximum contentHeight), width fill, spacing 20, paddingXY 0 10, scrollbarY ]
-        (Dict.get model.surahNumber model.surahs
-            |> Maybe.map second
-            |> Maybe.withDefault []
-            |> List.indexedMap Tuple.pair
-            |> indexBy1
-            |> map (viewAyat model)
+        (case Dict.get model.surahNumber model.surahs of
+            Just surah ->
+                viewBasmalah :: (surah
+                    |> second
+                    |> List.indexedMap Tuple.pair
+                    |> indexBy1
+                    |> map (viewAyat model))
+            Nothing ->
+                []
         )
 
+viewBasmalah : Element Msg
+viewBasmalah = el [centerX, width (fill |> maximum 500), arabicFontSize, Font.family [ Font.typeface "KFGQPC Uthman Taha Naskh" ] ] (text "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيم")
 
 viewAyat : Model -> ( Int, String ) -> Element Msg
 viewAyat model ( ai, ayatString ) =
