@@ -5,11 +5,11 @@ import Browser exposing (UrlRequest)
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict exposing (Dict)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, html, htmlAttribute, link, maximum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, html, htmlAttribute, link, maximum, minimum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
 import Element.Background as Background
 import Element.Events as Events exposing (onClick)
 import Element.Font as Font
-import Element.Input as Input
+import Element.Input as Input exposing (labelAbove, multiline)
 import Element.Lazy exposing (lazy, lazy3)
 import EncodeString exposing (encode)
 import Html
@@ -702,11 +702,17 @@ viewCSV model =
             else
                 str
 
-        outputPerSurah : Index -> List ( Index, String ) -> List (Element Msg)
+        outputPerSurah : Index -> List ( Index, String ) -> List String
         outputPerSurah surahIndex list =
-            map (\( ai, ayat ) -> paragraph [] (List.intersperse (text "\t") [ text ayat, text (translation surahIndex ai), text (fromInt ai), text ("Surah" ++ fromInt surahIndex) ])) list
+            map (\( ai, ayat ) -> String.join "\t" [ ayat, translation surahIndex ai, fromInt ai, "Surah" ++ fromInt surahIndex ]) list
     in
-    column [] <| concat <| map (\i -> outputPerSurah i (surahData i)) <| List.range 1 144
+    multiline [ height (fill |> minimum 500) ]
+        { onChange = \_ -> NoOp
+        , text = String.join "\n" <| concat <| map (\i -> outputPerSurah i (surahData i)) <| List.range 1 144
+        , placeholder = Nothing
+        , label = labelAbove [] (text "Import To Anki Flashcard Program:")
+        , spellcheck = False
+        }
 
 
 viewHeader : Model -> Element Msg
