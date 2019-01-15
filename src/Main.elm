@@ -293,19 +293,20 @@ init sessionProgress url key =
 
 
 type SurahRoots
-    = SurahRoots (Dict Index Ayats)
+    = SurahRoots (Dict Index AyatRoots)
 
 
-type Ayats
-    = Ayats (Dict Index Tokens)
+type AyatRoots
+    = AyatRoots (Dict Index TokenRoots)
 
 
-type Tokens
-    = Tokens (Dict Index Root)
+type TokenRoots
+    = TokenRoots (Dict Index Root)
 
 
 type Progress
-    = Learning
+    = Unknown
+    | Learning
     | Learned
 
 
@@ -371,19 +372,19 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
             SurahRoots (Dict.insert si (newAyat Dict.empty) surahs)
 
         newAyat ayats =
-            Ayats (Dict.insert ai (newToken Dict.empty) ayats)
+            AyatRoots (Dict.insert ai (newToken Dict.empty) ayats)
 
         newToken tokens =
-            Tokens (Dict.insert wi root tokens)
+            TokenRoots (Dict.insert wi root tokens)
 
-        insert : Dict Index Tokens -> Dict Index Root -> Ayats
+        insert : Dict Index TokenRoots -> Dict Index Root -> AyatRoots
         insert ayats tokens =
-            Ayats (Dict.insert ai (newToken tokens) ayats)
+            AyatRoots (Dict.insert ai (newToken tokens) ayats)
     in
     case Dict.get si surahs of
-        Just (Ayats ayats) ->
+        Just (AyatRoots ayats) ->
             case Dict.get ai ayats of
-                Just (Tokens tokens) ->
+                Just (TokenRoots tokens) ->
                     case Dict.get wi tokens of
                         Just _ ->
                             SurahRoots surahs
@@ -409,7 +410,7 @@ type alias Tracker =
 
 
 type Msg
-    = SetKnown Root (Maybe Progress)
+    = SetKnown Root Progress
     | LoadSurah (Result Http.Error SurahData)
     | LoadRootsData (Result Http.Error RootsData)
     | LoadTranslations (Result Http.Error (List (List String)))
@@ -431,7 +432,10 @@ update msg model =
             let
                 learn : Root -> Progress -> Known -> Known
                 learn rootLetters progress learned =
-                    Dict.insert rootLetters progress learned
+                    if progress == Unknown then
+                        learned -- this shouldn't happen, need to find way to deal with this
+                    else
+                        Dict.insert rootLetters progress learned
 
                 forget : Root -> Known -> Known
                 forget rootLetters learned =
@@ -457,13 +461,13 @@ update msg model =
 
             else
                 case isKnown of
-                    Just Learned ->
+                    Learned ->
                         ( { model | known = learn root Learned model.known }, cmd <| learn root Learned model.known )
 
-                    Just Learning ->
+                    Learning ->
                         ( { model | known = learn root Learning model.known }, cmd <| learn root Learning model.known )
 
-                    Nothing ->
+                    Unknown ->
                         ( { model | known = forget root model.known }, cmd <| forget root model.known )
 
         SetActiveDetails ( root, loc ) ->
@@ -519,11 +523,11 @@ update msg model =
 
                 RootModal ( surahNum, ai, wi ) ->
                     let
-                        ayats : Ayats
+                        ayats : AyatRoots
                         ayats =
                             getAyatsRoots surahNum model.surahRoots
 
-                        tokens : Tokens
+                        tokens : TokenRoots
                         tokens =
                             getTokenRoots ai ayats
 
@@ -806,11 +810,11 @@ viewAyat model ( ai, ayatString ) =
 printAyat : Model -> ( Int, String ) -> Element Msg
 printAyat model ( ai, ayatString ) =
     let
-        ayats : Ayats
+        ayats : AyatRoots
         ayats =
             getAyatsRoots model.surahNumber model.surahRoots
 
-        tokens : Tokens
+        tokens : TokenRoots
         tokens =
             getTokenRoots ai ayats
 
@@ -833,14 +837,14 @@ printAyatNumber ai =
     el [] <| text (fromInt ai ++ ".")
 
 
-getAyatsRoots : Index -> SurahRoots -> Ayats
+getAyatsRoots : Index -> SurahRoots -> AyatRoots
 getAyatsRoots index (SurahRoots surahs) =
-    Dict.get index surahs |> Maybe.withDefault (Ayats Dict.empty)
+    Dict.get index surahs |> Maybe.withDefault (AyatRoots Dict.empty)
 
 
-getTokenRoots : Index -> Ayats -> Tokens
-getTokenRoots index (Ayats ayats) =
-    Dict.get index ayats |> Maybe.withDefault (Tokens Dict.empty)
+getTokenRoots : Index -> AyatRoots -> TokenRoots
+getTokenRoots index (AyatRoots ayats) =
+    Dict.get index ayats |> Maybe.withDefault (TokenRoots Dict.empty)
 
 
 addWhenYaa : String -> List String -> List String
@@ -863,25 +867,25 @@ indexBy1 =
     map (\( i, a ) -> ( i + 1, a ))
 
 
-wordColor : Maybe Progress -> Bool -> Element.Attribute Msg
+wordColor : Progress -> Bool -> Element.Attribute Msg
 wordColor isKnown isLearnable =
     htmlAttribute <|
         class <|
             case ( isKnown, isLearnable ) of
-                ( Just Learned, _ ) ->
+                ( Learned, _ ) ->
                     "learned-word"
 
-                ( Just Learning, True ) ->
+                ( Learning, True ) ->
                     "learning-word"
 
-                ( Nothing, True ) ->
+                ( Unknown, True ) ->
                     "unknown-word"
 
                 ( _, _ ) ->
-                    "no-root-word"
+                    "no-root-word" -- do we need to use this?
 
 
-viewWord : Int -> ActiveWordDetails -> Known -> Tokens -> Int -> ( Int, String ) -> Element Msg
+viewWord : Int -> ActiveWordDetails -> Known -> TokenRoots -> Int -> ( Int, String ) -> Element Msg
 viewWord surahNumber activeWordDetails known tokens ai ( wi, w ) =
     let
         root =
@@ -924,17 +928,17 @@ viewWord surahNumber activeWordDetails known tokens ai ( wi, w ) =
     lazy3 stuff isKnown isLearnable backgroundColor
 
 
-getRootFromToken : Index -> Tokens -> Root
-getRootFromToken index (Tokens token) =
+getRootFromToken : Index -> TokenRoots -> Root
+getRootFromToken index (TokenRoots token) =
     Dict.get index token |> Maybe.withDefault ""
 
 
-isLearned : Root -> Known -> Maybe Progress
+isLearned : Root -> Known -> Progress
 isLearned root known =
-    Dict.get root known
+    Maybe.withDefault Unknown <| Dict.get root known
 
 
-viewLearnableWord : Root -> Maybe Progress -> Element Msg
+viewLearnableWord : Root -> Progress -> Element Msg
 viewLearnableWord root progress =
     el [ centerX, paddingXY 0 10 ] <|
         Input.radio [ spacing 10 ]
@@ -942,9 +946,9 @@ viewLearnableWord root progress =
             , selected = Just progress
             , label = Input.labelAbove [ paddingXY 0 5 ] (text "Set your learning progress on this root:")
             , options =
-                [ Input.option Nothing (text "Not Learned")
-                , Input.option (Just Learning) (text "Learning")
-                , Input.option (Just Learned) (text "Learned")
+                [ Input.option Unknown (text "Not Learned")
+                , Input.option (Learning) (text "Learning")
+                , Input.option (Learned) (text "Learned")
                 ]
             }
 
@@ -1067,24 +1071,24 @@ scrollToWord loc =
 getKnownAyats : Int -> SurahRoots -> SurahData -> Known -> List ( Index, String )
 getKnownAyats si (SurahRoots surahs) surahsData known =
     let
-        getAyats : Ayats
+        getAyats : AyatRoots
         getAyats =
-            Maybe.withDefault (Ayats Dict.empty) <| Dict.get si surahs
+            Maybe.withDefault (AyatRoots Dict.empty) <| Dict.get si surahs
 
-        filterKnownAyats : Ayats -> Ayats
-        filterKnownAyats (Ayats ayats) =
-            Ayats <| Dict.filter isKnownAyat ayats
+        filterKnownAyats : AyatRoots -> AyatRoots
+        filterKnownAyats (AyatRoots ayats) =
+            AyatRoots <| Dict.filter isKnownAyat ayats
 
-        isKnownAyat : Int -> Tokens -> Bool
-        isKnownAyat _ (Tokens tokens) =
+        isKnownAyat : Int -> TokenRoots -> Bool
+        isKnownAyat _ (TokenRoots tokens) =
             tokens == Dict.filter isKnownRoot tokens
 
         isKnownRoot : Int -> Root -> Bool
         isKnownRoot _ root =
             Dict.member root known
 
-        toAyatStrings : Ayats -> List ( Index, String )
-        toAyatStrings (Ayats ayats) =
+        toAyatStrings : AyatRoots -> List ( Index, String )
+        toAyatStrings (AyatRoots ayats) =
             filter (\( i, _ ) -> Dict.member i ayats) <| indexBy1 <| List.indexedMap Tuple.pair <| Maybe.withDefault [] <| Maybe.map second <| Dict.get si surahsData
     in
     toAyatStrings <| filterKnownAyats getAyats
@@ -1093,13 +1097,13 @@ getKnownAyats si (SurahRoots surahs) surahsData known =
 surahListWithCompleteAyats : SurahRoots -> Known -> List Int
 surahListWithCompleteAyats (SurahRoots surahs) known =
     let
-        filterKnownAyats : Index -> Ayats -> Bool
-        filterKnownAyats i (Ayats ayats) =
+        filterKnownAyats : Index -> AyatRoots -> Bool
+        filterKnownAyats i (AyatRoots ayats) =
             (Dict.size <| Dict.filter isKnownAyat ayats) > 0
 
         -- improve to break on first find
-        isKnownAyat : Int -> Tokens -> Bool
-        isKnownAyat _ (Tokens tokens) =
+        isKnownAyat : Int -> TokenRoots -> Bool
+        isKnownAyat _ (TokenRoots tokens) =
             tokens == Dict.filter isKnownRoot tokens
 
         isKnownRoot : Int -> Root -> Bool
@@ -1112,12 +1116,12 @@ surahListWithCompleteAyats (SurahRoots surahs) known =
 countKnownAyats : Int -> SurahRoots -> Known -> Int
 countKnownAyats si (SurahRoots surahs) known =
     let
-        filterKnownAyats : Ayats -> Int
-        filterKnownAyats (Ayats ayats) =
+        filterKnownAyats : AyatRoots -> Int
+        filterKnownAyats (AyatRoots ayats) =
             Dict.size <| Dict.filter isKnownAyat ayats
 
-        isKnownAyat : Int -> Tokens -> Bool
-        isKnownAyat _ (Tokens tokens) =
+        isKnownAyat : Int -> TokenRoots -> Bool
+        isKnownAyat _ (TokenRoots tokens) =
             tokens == Dict.filter isKnownRoot tokens
 
         isKnownRoot : Int -> Root -> Bool
