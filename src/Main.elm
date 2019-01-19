@@ -575,27 +575,6 @@ arabicFontSize =
 pageBackground =
     Background.color <| rgb255 244 241 222
 
-
-learnedColor =
-    Font.color <| rgb255 61 64 91
-
-
-learningColor =
-    Font.color <| rgb255 0 0 255
-
-
-notLearnedColor =
-    Font.color <| rgb255 224 122 95
-
-
-hoverBackground =
-    Background.color <| rgb255 242 204 143
-
-
-hoverClickedBackground =
-    Background.color <| rgb255 242 204 143
-
-
 colorGreen =
     Font.color <| rgb 0 255 0
 
