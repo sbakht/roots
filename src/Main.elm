@@ -149,11 +149,7 @@ decodeAllSurahs =
 
 mkSurahData : Int -> SurahInfoDict -> String -> List String -> SurahInfoDict
 mkSurahData surahNum surahData name listOfSurahRoots =
-    if surahNum == 1 then
-        Dict.insert surahNum ( name, drop 1 <| formatSurahText listOfSurahRoots ) surahData
-
-    else
-        Dict.insert surahNum ( name, formatSurahText listOfSurahRoots ) surahData
+    Dict.insert surahNum ( name, formatSurahText listOfSurahRoots ) surahData
 
 
 formatSurahText : List String -> List String
@@ -360,7 +356,7 @@ type Msg
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
     | ToggleOverlayGroup Int Root
-    | PushUrl String
+    | SelectSurah String
     | NoOp
 
 
@@ -490,8 +486,8 @@ update msg model =
                 Null ->
                     ( model, Cmd.none )
 
-        PushUrl url ->
-            ( model, Nav.pushUrl model.key url )
+        SelectSurah url ->
+            ( { model | activeWordDetails = Nothing }, Nav.pushUrl model.key url )
 
         ToggleOverlayGroup index root ->
             let
@@ -604,7 +600,7 @@ viewHeader model =
                 |> (\x -> x / 100)
 
         updateUrl url =
-            PushUrl <| "/" ++ url
+            SelectSurah <| "/" ++ url
 
         viewSurahName : Int -> SurahInfoDict -> Element Msg
         viewSurahName si surahData =
@@ -702,7 +698,7 @@ viewSurah model =
     column [ height (fill |> maximum contentHeight), width fill, spacing 20, paddingXY 0 10, scrollbarY ]
         (case get model.surahNumber model.surahs of
             Just surah ->
-                (if model.surahNumber /= 9 then
+                (if model.surahNumber /= 9 || model.surahNumber /= 1 then
                     viewBasmalah
 
                  else
