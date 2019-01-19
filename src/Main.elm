@@ -251,7 +251,7 @@ type alias Model =
     , url : Url.Url
     , surahs : SurahInfoDict
     , surahRoots : SurahRoots
-    , rootsData : RootInfoDict
+    , roots : RootInfoDict
     , known : Known
     , surahNumber : Int
     , surahName : String
@@ -267,7 +267,7 @@ init sessionProgress url key =
       , url = url
       , surahs = Dict.empty
       , surahRoots = SurahRoots Dict.empty
-      , rootsData = Dict.empty
+      , roots = Dict.empty
       , known = Result.withDefault Dict.empty <| Decode.decodeValue decodeProgress sessionProgress
       , surahNumber = tempSurahNumber
       , surahName = "Test Name"
@@ -418,7 +418,7 @@ update msg model =
                 ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
-            if Dict.isEmpty model.rootsData then
+            if Dict.isEmpty model.roots then
                 ( { model | surahs = surahData }, wordsCmd )
 
             else
@@ -432,8 +432,8 @@ update msg model =
         LoadSurah _ ->
             ( model, Cmd.none )
 
-        LoadRootsInfo (Ok rootsDatas) ->
-            ( { model | surahRoots = rootsDataToSurahRoots rootsDatas, rootsData = rootsDatas }, Cmd.none )
+        LoadRootsInfo (Ok roots) ->
+            updateRoots roots model
 
         LoadRootsInfo _ ->
             ( model, Cmd.none )
@@ -493,15 +493,11 @@ update msg model =
             let
                 oldWordsGroups : List WordGroup
                 oldWordsGroups =
-                    case get root model.rootsData of
-                        Just data ->
-                            data
+                    get root model.roots
+                        |> Maybe.withDefault []
 
-                        Nothing ->
-                            []
-
-                newWordsGroups : List WordGroup
-                newWordsGroups =
+                toggleIthGroup : List WordGroup
+                toggleIthGroup =
                     List.indexedMap
                         (\i group ->
                             if i == index then
@@ -514,9 +510,58 @@ update msg model =
 
                 newRootsData : RootInfoDict
                 newRootsData =
-                    Dict.insert root newWordsGroups model.rootsData
+                    Dict.insert root toggleIthGroup model.roots
             in
-            ( { model | rootsData = newRootsData }, Cmd.none )
+            ( { model | roots = newRootsData }, Cmd.none )
+
+
+addRoot : Root -> Location -> SurahRoots -> SurahRoots
+addRoot root ( si, ai, wi ) (SurahRoots surahs) =
+    let
+        newSurah : SurahRoots
+        newSurah =
+            SurahRoots (Dict.insert si (newAyat Dict.empty) surahs)
+
+        newAyat ayats =
+            AyatRoots (Dict.insert ai (newToken Dict.empty) ayats)
+
+        newToken tokens =
+            TokenRoots (Dict.insert wi root tokens)
+
+        insert : Dict Index TokenRoots -> Dict Index Root -> AyatRoots
+        insert ayats tokens =
+            AyatRoots (Dict.insert ai (newToken tokens) ayats)
+    in
+    case get si surahs of
+        Just (AyatRoots ayats) ->
+            case get ai ayats of
+                Just (TokenRoots tokens) ->
+                    case get wi tokens of
+                        Just _ ->
+                            SurahRoots surahs
+
+                        Nothing ->
+                            SurahRoots (Dict.insert si (insert ayats tokens) surahs)
+
+                Nothing ->
+                    SurahRoots (Dict.insert si (newAyat ayats) surahs)
+
+        Nothing ->
+            newSurah
+
+
+updateRoots : RootInfoDict -> Model -> ( Model, Cmd Msg )
+updateRoots roots model =
+    let
+        stuff : Root -> List WordGroup -> SurahRoots -> SurahRoots
+        stuff root wordsGroups dic =
+            List.foldl (startToAddRoot root) dic <| joinAllWordGroups wordsGroups
+
+        startToAddRoot : Root -> WordInfo -> SurahRoots -> SurahRoots
+        startToAddRoot root wordInfo surahs =
+            addRoot root wordInfo.location surahs
+    in
+    ( { model | surahRoots = Dict.foldl stuff (SurahRoots Dict.empty) roots, roots = roots }, Cmd.none )
 
 
 englishFontSize =
@@ -581,10 +626,10 @@ viewHeader : Model -> Element Msg
 viewHeader model =
     let
         totalWords =
-            Dict.foldl (\_ v accum -> length v + accum) 0 model.rootsData
+            Dict.foldl (\_ v accum -> length v + accum) 0 model.roots
 
         totalOccurrences root =
-            get root model.rootsData
+            get root model.roots
                 |> Maybe.withDefault []
                 |> length
 
@@ -844,13 +889,13 @@ getProgress root known =
 
 
 viewOverlay : Model -> Element Msg
-viewOverlay { rootsData, known, activeWordDetails } =
+viewOverlay { roots, known, activeWordDetails } =
     column [ height (fill |> maximum contentHeight), width (fill |> maximum 600), scrollbarY ] <|
         case activeWordDetails of
             Just ( root, loc ) ->
-                [ viewOverlayWord root loc rootsData
+                [ viewOverlayWord root loc roots
                 , viewProgressOptions root <| getProgress root known
-                , viewOtherWordsWithSameRoot root loc rootsData
+                , viewOtherWordsWithSameRoot root loc roots
                 ]
 
             Nothing ->
@@ -858,7 +903,7 @@ viewOverlay { rootsData, known, activeWordDetails } =
 
 
 viewOverlayWord : Root -> Location -> RootInfoDict -> Element Msg
-viewOverlayWord root loc rootsData =
+viewOverlayWord root loc roots =
     let
         filterToWord : List WordInfo -> Maybe WordInfo
         filterToWord =
@@ -872,7 +917,7 @@ viewOverlayWord root loc rootsData =
                 , el [ centerX ] <| text (locationToString location)
                 ]
     in
-    get root rootsData
+    get root roots
         |> mapM joinAllWordGroups
         |> andThen filterToWord
         |> mapM printWord
@@ -895,7 +940,7 @@ viewProgressOptions root progress =
 
 
 viewOtherWordsWithSameRoot : Root -> Location -> RootInfoDict -> Element Msg
-viewOtherWordsWithSameRoot root location rootsData =
+viewOtherWordsWithSameRoot root location roots =
     let
         filterOutActiveWord : List WordInfo -> List WordInfo
         filterOutActiveWord =
@@ -927,7 +972,7 @@ viewOtherWordsWithSameRoot root location rootsData =
         printGroups =
             concat << List.indexedMap printGroup
     in
-    get root rootsData
+    get root roots
         |> mapM (column [ width fill ] << printGroups)
         |> withDefault none
 
@@ -961,55 +1006,6 @@ scrollToWord loc =
 locationToUrl : Location -> String
 locationToUrl ( a, b, c ) =
     absolute (map fromInt [ a, b, c ]) []
-
-
-addRoot : Root -> Location -> SurahRoots -> SurahRoots
-addRoot root ( si, ai, wi ) (SurahRoots surahs) =
-    let
-        newSurah : SurahRoots
-        newSurah =
-            SurahRoots (Dict.insert si (newAyat Dict.empty) surahs)
-
-        newAyat ayats =
-            AyatRoots (Dict.insert ai (newToken Dict.empty) ayats)
-
-        newToken tokens =
-            TokenRoots (Dict.insert wi root tokens)
-
-        insert : Dict Index TokenRoots -> Dict Index Root -> AyatRoots
-        insert ayats tokens =
-            AyatRoots (Dict.insert ai (newToken tokens) ayats)
-    in
-    case get si surahs of
-        Just (AyatRoots ayats) ->
-            case get ai ayats of
-                Just (TokenRoots tokens) ->
-                    case get wi tokens of
-                        Just _ ->
-                            SurahRoots surahs
-
-                        Nothing ->
-                            SurahRoots (Dict.insert si (insert ayats tokens) surahs)
-
-                Nothing ->
-                    SurahRoots (Dict.insert si (newAyat ayats) surahs)
-
-        Nothing ->
-            newSurah
-
-
-rootsDataToSurahRoots : RootInfoDict -> SurahRoots
-rootsDataToSurahRoots rootsData =
-    let
-        stuff : Root -> List WordGroup -> SurahRoots -> SurahRoots
-        stuff root wordsGroups dic =
-            List.foldl (startToAddRoot root) dic <| joinAllWordGroups wordsGroups
-
-        startToAddRoot : Root -> WordInfo -> SurahRoots -> SurahRoots
-        startToAddRoot root wordInfo surahs =
-            addRoot root wordInfo.location surahs
-    in
-    Dict.foldl stuff (SurahRoots Dict.empty) rootsData
 
 
 joinAllWordGroups : List WordGroup -> List WordInfo
