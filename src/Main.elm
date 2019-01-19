@@ -4,8 +4,8 @@ import Array exposing (Array)
 import Browser exposing (UrlRequest)
 import Browser.Dom as Dom
 import Browser.Navigation as Nav
-import Dict exposing (Dict, get)
-import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, fillPortion, height, html, htmlAttribute, link, maximum, minimum, mouseOver, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
+import Dict as D exposing (Dict, get)
+import Element exposing (Attr, Element, alignRight, centerX, column, el, fill, height, html, htmlAttribute, link, maximum, minimum, none, padding, paddingXY, paragraph, pointer, rgb, rgb255, row, scrollbarY, spacing, spacingXY, text, width)
 import Element.Background as Background
 import Element.Events as Events exposing (onClick)
 import Element.Font as Font
@@ -13,16 +13,16 @@ import Element.Input as Input exposing (labelAbove, multiline)
 import Element.Lazy exposing (lazy, lazy3)
 import EncodeString exposing (encode)
 import Html
-import Html.Attributes exposing (checked, class, classList, for, href, id, name, selected, type_, value)
+import Html.Attributes exposing (class, href, name, selected, value)
 import Html.Events exposing (onInput)
 import Http
 import Json.Decode as Decode exposing (Decoder, Value, at, field, int, list, string, succeed)
-import Json.Decode.Pipeline exposing (hardcoded, optional, required, requiredAt)
+import Json.Decode.Pipeline exposing (requiredAt)
 import List exposing (concat, drop, filter, head, length, map)
-import Maybe exposing (andThen, withDefault)
-import String exposing (dropLeft, dropRight, fromChar, fromFloat, fromInt, split, toInt)
+import Maybe as M exposing (andThen, withDefault)
+import String exposing (dropLeft, dropRight, fromFloat, fromInt, split, toInt)
 import Task
-import Tuple exposing (first, mapFirst, mapSecond, second)
+import Tuple exposing (first, second)
 import Url
 import Url.Builder exposing (absolute)
 import Url.Parser as UrlParser exposing ((</>), Parser, int, oneOf, parse, s, top)
@@ -65,7 +65,7 @@ toRoute : String -> Route
 toRoute string =
     case Url.fromString string of
         Just url ->
-            Maybe.withDefault Null (parse route url)
+            M.withDefault Null (parse route url)
 
         Nothing ->
             Null
@@ -89,7 +89,7 @@ decodeProgress =
                 (field "learned" Decode.bool)
                 |> list
     in
-    Decode.map Dict.fromList dataDecode
+    Decode.map D.fromList dataDecode
 
 
 textList : Decoder (List String)
@@ -110,7 +110,7 @@ decodeLocations =
             dropLeft 1 s
                 |> dropRight 1
                 |> split ":"
-                |> map (toInt >> Maybe.withDefault 0)
+                |> map (toInt >> M.withDefault 0)
                 |> toLocation
 
         mkWordInfo : String -> String -> String -> String -> WordInfo
@@ -131,7 +131,7 @@ decodeLocations =
                 |> Decode.map3 WordGroup (field "name" string) (Decode.succeed True)
                 |> list
     in
-    Decode.map Dict.fromList <| Decode.keyValuePairs dataDecode
+    Decode.map D.fromList <| Decode.keyValuePairs dataDecode
 
 
 decodeSurah : Int -> SurahInfoDict -> Decoder SurahInfoDict
@@ -143,13 +143,13 @@ decodeSurah surahNum surahData =
 
 decodeAllSurahs : Decoder SurahInfoDict
 decodeAllSurahs =
-    succeed (\x -> List.foldl (\( surahNum, strArr ) surahData -> mkSurahData surahNum surahData "" strArr) Dict.empty <| indexBy1 <| List.indexedMap Tuple.pair x)
+    succeed (\x -> List.foldl (\( surahNum, strArr ) surahData -> mkSurahData surahNum surahData "" strArr) D.empty <| indexBy1 <| List.indexedMap Tuple.pair x)
         |> requiredAt [ "data", "surahs" ] (list <| at [ "ayahs" ] textList)
 
 
 mkSurahData : Int -> SurahInfoDict -> String -> List String -> SurahInfoDict
 mkSurahData surahNum surahData name listOfSurahRoots =
-    Dict.insert surahNum ( name, formatSurahText listOfSurahRoots ) surahData
+    D.insert surahNum ( name, formatSurahText listOfSurahRoots ) surahData
 
 
 formatSurahText : List String -> List String
@@ -265,17 +265,17 @@ init : Value -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init sessionProgress url key =
     ( { key = key
       , url = url
-      , surahs = Dict.empty
-      , surahRoots = SurahRoots Dict.empty
-      , roots = Dict.empty
-      , known = Result.withDefault Dict.empty <| Decode.decodeValue decodeProgress sessionProgress
+      , surahs = D.empty
+      , surahRoots = SurahRoots D.empty
+      , roots = D.empty
+      , known = Result.withDefault D.empty <| Decode.decodeValue decodeProgress sessionProgress
       , surahNumber = tempSurahNumber
       , surahName = "Test Name"
       , activeWordDetails = Nothing
       , page = "Home"
-      , translations = Dict.empty
+      , translations = D.empty
       }
-    , surahCmd tempSurahNumber Dict.empty
+    , surahCmd tempSurahNumber D.empty
     )
 
 
@@ -375,11 +375,11 @@ update msg model =
                         -- this shouldn't happen, need to find way to deal with this
 
                     else
-                        Dict.insert rootLetters progress learned
+                        D.insert rootLetters progress learned
 
                 forget : Root -> Known -> Known
                 forget rootLetters learned =
-                    Dict.remove rootLetters learned
+                    D.remove rootLetters learned
 
                 cmd known =
                     saveProgress
@@ -393,7 +393,7 @@ update msg model =
                                         False
                             )
                          <|
-                            Dict.toList known
+                            D.toList known
                         )
             in
             if root == "" then
@@ -418,7 +418,7 @@ update msg model =
                 ( { model | activeWordDetails = Just ( root, loc ) }, Cmd.none )
 
         LoadSurah (Ok surahData) ->
-            if Dict.isEmpty model.roots then
+            if D.isEmpty model.roots then
                 ( { model | surahs = surahData }, wordsCmd )
 
             else
@@ -439,7 +439,7 @@ update msg model =
             ( model, Cmd.none )
 
         LoadTranslations (Ok translations) ->
-            ( { model | translations = Dict.fromList <| indexBy1 <| List.indexedMap Tuple.pair translations }, Cmd.none )
+            ( { model | translations = D.fromList <| indexBy1 <| List.indexedMap Tuple.pair translations }, Cmd.none )
 
         LoadTranslations _ ->
             ( model, Cmd.none )
@@ -455,7 +455,7 @@ update msg model =
         UrlChanged url ->
             case toRoute (Url.toString url) of
                 SurahPage surahNum ->
-                    if Dict.member surahNum model.surahs then
+                    if D.member surahNum model.surahs then
                         ( { model | surahNumber = surahNum }, Cmd.none )
 
                     else
@@ -470,7 +470,7 @@ update msg model =
                         root =
                             getRootFromToken wi tokens
                     in
-                    if Dict.member surahNum model.surahs then
+                    if D.member surahNum model.surahs then
                         if surahNum == model.surahNumber then
                             ( { model | activeWordDetails = Just ( root, ( surahNum, ai, wi ) ) }, Cmd.none )
 
@@ -494,7 +494,7 @@ update msg model =
                 oldWordsGroups : List WordGroup
                 oldWordsGroups =
                     get root model.roots
-                        |> Maybe.withDefault []
+                        |> M.withDefault []
 
                 toggleIthGroup : List WordGroup
                 toggleIthGroup =
@@ -510,7 +510,7 @@ update msg model =
 
                 newRootsData : RootInfoDict
                 newRootsData =
-                    Dict.insert root toggleIthGroup model.roots
+                    D.insert root toggleIthGroup model.roots
             in
             ( { model | roots = newRootsData }, Cmd.none )
 
@@ -520,17 +520,17 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
     let
         newSurah : SurahRoots
         newSurah =
-            SurahRoots (Dict.insert si (newAyat Dict.empty) surahs)
+            SurahRoots (D.insert si (newAyat D.empty) surahs)
 
         newAyat ayats =
-            AyatRoots (Dict.insert ai (newToken Dict.empty) ayats)
+            AyatRoots (D.insert ai (newToken D.empty) ayats)
 
         newToken tokens =
-            TokenRoots (Dict.insert wi root tokens)
+            TokenRoots (D.insert wi root tokens)
 
         insert : Dict Index TokenRoots -> Dict Index Root -> AyatRoots
         insert ayats tokens =
-            AyatRoots (Dict.insert ai (newToken tokens) ayats)
+            AyatRoots (D.insert ai (newToken tokens) ayats)
     in
     case get si surahs of
         Just (AyatRoots ayats) ->
@@ -541,10 +541,10 @@ addRoot root ( si, ai, wi ) (SurahRoots surahs) =
                             SurahRoots surahs
 
                         Nothing ->
-                            SurahRoots (Dict.insert si (insert ayats tokens) surahs)
+                            SurahRoots (D.insert si (insert ayats tokens) surahs)
 
                 Nothing ->
-                    SurahRoots (Dict.insert si (newAyat ayats) surahs)
+                    SurahRoots (D.insert si (newAyat ayats) surahs)
 
         Nothing ->
             newSurah
@@ -561,7 +561,7 @@ updateRoots roots model =
         startToAddRoot root wordInfo surahs =
             addRoot root wordInfo.location surahs
     in
-    ( { model | surahRoots = Dict.foldl stuff (SurahRoots Dict.empty) roots, roots = roots }, Cmd.none )
+    ( { model | surahRoots = D.foldl stuff (SurahRoots D.empty) roots, roots = roots }, Cmd.none )
 
 
 englishFontSize =
@@ -626,15 +626,15 @@ viewHeader : Model -> Element Msg
 viewHeader model =
     let
         totalWords =
-            Dict.foldl (\_ v accum -> length v + accum) 0 model.roots
+            D.foldl (\_ v accum -> length v + accum) 0 model.roots
 
         totalOccurrences root =
             get root model.roots
-                |> Maybe.withDefault []
+                |> M.withDefault []
                 |> length
 
         totalKnown =
-            Dict.foldr (\root _ accum -> totalOccurrences root + accum) 0 model.known
+            D.foldr (\root _ accum -> totalOccurrences root + accum) 0 model.known
 
         percentage =
             toFloat totalKnown
@@ -649,7 +649,7 @@ viewHeader model =
 
         viewSurahName : Int -> SurahInfoDict -> Element Msg
         viewSurahName si surahData =
-            el [ centerX, colorGreen ] <| text (Maybe.withDefault "" <| Maybe.map first <| get si surahData)
+            el [ centerX, colorGreen ] <| text (M.withDefault "" <| M.map first <| get si surahData)
     in
     row [ width fill, paddingXY 0 10, spacing 10 ] <|
         [ el [] <| text "Home"
@@ -678,27 +678,27 @@ viewCSV model =
             let
                 filterKnownAyats : AyatRoots -> AyatRoots
                 filterKnownAyats (AyatRoots ayats) =
-                    AyatRoots <| Dict.filter isKnownAyat ayats
+                    AyatRoots <| D.filter isKnownAyat ayats
 
                 isKnownAyat : Int -> TokenRoots -> Bool
                 isKnownAyat _ (TokenRoots tokens) =
-                    tokens == Dict.filter isKnownRoot tokens
+                    tokens == D.filter isKnownRoot tokens
 
                 isKnownRoot : Int -> Root -> Bool
                 isKnownRoot _ root =
-                    Dict.member root known
+                    D.member root known
 
                 toAyatStrings : AyatRoots -> List ( Index, String )
                 toAyatStrings (AyatRoots ayats) =
-                    filter (\( i, _ ) -> Dict.member i ayats) <| indexBy1 <| List.indexedMap Tuple.pair <| Maybe.withDefault [] <| Maybe.map second <| get si surahsData
+                    filter (\( i, _ ) -> D.member i ayats) <| indexBy1 <| List.indexedMap Tuple.pair <| M.withDefault [] <| M.map second <| get si surahsData
             in
             toAyatStrings <| filterKnownAyats (getAyatsRoots si surahRoots)
 
         translationBySurah surahIndex =
-            Maybe.withDefault [] <| get surahIndex <| model.translations
+            M.withDefault [] <| get surahIndex <| model.translations
 
         translation surahIndex ai =
-            replaceMultiAyatQuote <| Maybe.withDefault "" <| Array.get (ai - 1) <| Array.fromList <| translationBySurah surahIndex
+            replaceMultiAyatQuote <| M.withDefault "" <| Array.get (ai - 1) <| Array.fromList <| translationBySurah surahIndex
 
         replaceMultiAyatQuote str =
             if String.startsWith "\"" str && (remainderBy 2 (length <| String.indexes "\"" str) > 0) then
@@ -875,7 +875,7 @@ viewWord surahNumber activeWordDetails known tokens ai ( wi, w ) =
 
 getRootFromToken : Index -> TokenRoots -> Root
 getRootFromToken index (TokenRoots token) =
-    get index token |> Maybe.withDefault ""
+    get index token |> M.withDefault ""
 
 
 getProgress : Root -> Known -> Progress
@@ -918,9 +918,9 @@ viewOverlayWord root loc roots =
                 ]
     in
     get root roots
-        |> mapM joinAllWordGroups
+        |> M.map joinAllWordGroups
         |> andThen filterToWord
-        |> mapM printWord
+        |> M.map printWord
         |> withDefault none
 
 
@@ -973,7 +973,7 @@ viewOtherWordsWithSameRoot root location roots =
             concat << List.indexedMap printGroup
     in
     get root roots
-        |> mapM (column [ width fill ] << printGroups)
+        |> M.map (column [ width fill ] << printGroups)
         |> withDefault none
 
 
@@ -1015,14 +1015,14 @@ joinAllWordGroups =
 
 getAyatsRoots : Index -> SurahRoots -> AyatRoots
 getAyatsRoots index (SurahRoots surahs) =
-    get index surahs |> Maybe.withDefault (AyatRoots Dict.empty)
+    get index surahs |> M.withDefault (AyatRoots D.empty)
 
 
 getTokenRoots : Index -> Index -> SurahRoots -> TokenRoots
 getTokenRoots si ai surahRoots =
     case getAyatsRoots si surahRoots of
         AyatRoots ayats ->
-            get ai ayats |> Maybe.withDefault (TokenRoots Dict.empty)
+            get ai ayats |> M.withDefault (TokenRoots D.empty)
 
 
 surahListWithCompleteAyats : SurahRoots -> Known -> List Int
@@ -1030,19 +1030,19 @@ surahListWithCompleteAyats (SurahRoots surahs) known =
     let
         completeAyat : Index -> AyatRoots -> Bool
         completeAyat i (AyatRoots ayats) =
-            (Dict.size <| Dict.filter isKnownAyat ayats) > 0
+            (D.size <| D.filter isKnownAyat ayats) > 0
 
         -- improve to break on first find
         isKnownAyat : Int -> TokenRoots -> Bool
         isKnownAyat _ (TokenRoots tokens) =
-            tokens == Dict.filter isKnownRoot tokens
+            tokens == D.filter isKnownRoot tokens
 
         isKnownRoot : Int -> Root -> Bool
         isKnownRoot _ root =
-            Dict.member root known
+            D.member root known
     in
-    Dict.filter completeAyat surahs
-        |> Dict.keys
+    D.filter completeAyat surahs
+        |> D.keys
 
 
 countKnownAyats : Int -> SurahRoots -> Known -> Int
@@ -1050,24 +1050,19 @@ countKnownAyats si (SurahRoots surahs) known =
     let
         filterKnownAyats : AyatRoots -> Int
         filterKnownAyats (AyatRoots ayats) =
-            Dict.size <| Dict.filter isKnownAyat ayats
+            D.size <| D.filter isKnownAyat ayats
 
         isKnownAyat : Int -> TokenRoots -> Bool
         isKnownAyat _ (TokenRoots tokens) =
-            tokens == Dict.filter isKnownRoot tokens
+            tokens == D.filter isKnownRoot tokens
 
         isKnownRoot : Int -> Root -> Bool
         isKnownRoot _ root =
-            Dict.member root known
+            D.member root known
     in
-    Dict.values surahs
+    D.values surahs
         |> map filterKnownAyats
         |> List.sum
-
-
-mapM =
-    Maybe.map
-
 
 main : Program Value Model Msg
 main =
