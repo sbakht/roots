@@ -16,16 +16,37 @@ app.listen(app.get('port'), function() {
   app.get('port'))
 });
 
+function createRootToLocation() {
   fs.readFile('output.json', 'utf8', function(err, input) {
     let json = JSON.parse(input || '{}');
     let nameID = 999;
     const output = [];
     for(let root in json) {
-      json[root].forEach(function(wordType) {
+      output.push({
+        root,
+        id: json[root].id,
+        categories: json[root].values
+      })
+    }
+    console.log(output);
+    fs.writeFile('RootToLocation.json', JSON.stringify(output, null, 4), function(err) {
+    })
+  });
+}
+
+// createRootToLocation();
+
+
+function createLocationToRootFromRoots() {
+  fs.readFile('output.json', 'utf8', function(err, input) {
+    let json = JSON.parse(input || '{}');
+    let nameID = 999;
+    const output = [];
+    for(let root in json) {
+      json[root].values.forEach(function(wordType) {
         nameID++;
         wordType.data.forEach(function(wordInfo) {
-          const location = locToObj(wordInfo.location);
-          placeWordInLocation(wordType.name, nameID, {...wordInfo, location}, output)
+          placeWordInLocation(wordType.name, json[root].id, {...wordInfo, root}, output)
         })
       })
     }
@@ -40,9 +61,35 @@ app.listen(app.get('port'), function() {
       })
     console.log(bakarah.ayats);
     console.log(bakarah.ayats.length);
-        fs.writeFile('LocationToRoot.json', JSON.stringify(output, null, 4), function(err) {
+    fs.writeFile('LocationToRoot.json', JSON.stringify(output, null, 4), function(err) {
     })
   });
+}
+
+createLocationToRootFromRoots();
+
+function addRootIdToRoots() {
+    fs.readFile('output.json', 'utf8', function(err, input) {
+    let json = JSON.parse(input || '{}');
+    let nameID = 5000;
+    let wordTypeId = 3000;
+    for(let root in json) {
+      json[root].values.forEach(function(wordType) {
+        wordType.id = wordTypeId;
+        nameID++;
+        wordTypeId++;
+        wordType.data.forEach(function(word) {
+          word.rootId = json[root].id
+          word.root = root;
+        }) 
+      })
+    }
+    fs.writeFile('output.json', JSON.stringify(json, null, 4), function(err) {
+    })
+  });
+}
+
+// addRootIdToRoots()
 
 app.get('/scrape', function(req, res) {
     let pageRoots = req.query.roots;
@@ -96,31 +143,35 @@ function locToObj(location) {
 }
 
 
-function placeWordInLocation(name, nameID, wordInfo, output) {
+function placeWordInLocation(name, rootId, wordInfo, output) {
+  const location = locToObj(wordInfo.location);
   function buildWordInfo(wordInfo) {
     return   {
-              wordNumber: wordInfo.location.wordNumber,
+              wordNumber: location.wordNumber,
               word: wordInfo.word,
               translation: wordInfo.translation,
               transliteration: wordInfo.transliteration,
+              root: wordInfo.root,
+              rootId,
+              location: wordInfo.location
             }
   }
-  const surah = output.find(surah => surah.surahNumber === wordInfo.location.surahNumber);
+  const surah = output.find(surah => surah.surahNumber === location.surahNumber);
   if(!surah) {
     output.push({
-      surahNumber: wordInfo.location.surahNumber,
+      surahNumber: location.surahNumber,
       ayats: [
         {
-          ayatNumber: wordInfo.location.ayatNumber,
+          ayatNumber: location.ayatNumber,
           words: [buildWordInfo(wordInfo)]
         }
       ]
     })
   }else{
-    const ayat = surah.ayats.find(ayat => ayat.ayatNumber === wordInfo.location.ayatNumber);
+    const ayat = surah.ayats.find(ayat => ayat.ayatNumber === location.ayatNumber);
     if(!ayat) {
       surah.ayats.push({
-          ayatNumber: wordInfo.location.ayatNumber,
+          ayatNumber: location.ayatNumber,
           words: [buildWordInfo(wordInfo)]
       })
     }else{
