@@ -102,6 +102,35 @@ decodeTranslations =
     at [ "data", "surahs" ] (list <| at [ "ayahs" ] textList)
 
 
+{--
+[
+  {
+    "root": "أ ب ب",
+    "id": 5000,
+    "wordCount": 1,
+    "level": 14,
+    "categories": [
+      {
+        "name": "Noun - grass, herbage, pasture",
+        "id": 3000,
+        "data": [
+          {
+            "wordNumber": null,
+            "word": "وَأَبًّا",
+            "translation": "and grass",
+            "transliteration": "wa-abban",
+            "root": "أ ب ب",
+            "location": "(80:31:2)",
+            "rootId": 5000
+          }
+        ],
+        "wordCount": 1
+      }
+    ]
+  }
+]
+--}
+
 decodeLocations : Decoder RootInfoDict
 decodeLocations =
     let
@@ -126,12 +155,18 @@ decodeLocations =
                 (field "word" string)
 
         dataDecode =
-            list wordDecoder
-                |> field "data"
-                |> Decode.map3 WordGroup (field "name" string) (Decode.succeed True)
-                |> list
+            Decode.map2 (\a b -> (a,b))
+                (field "root" string)
+                (field "categories"
+                    (list ( Decode.map3 WordGroup
+                              (field "name" string)
+                              (Decode.succeed True)
+                              (field "data" (list wordDecoder))
+                        )
+                    )
+                )
     in
-    Decode.map D.fromList <| Decode.keyValuePairs dataDecode
+    Decode.map D.fromList <| (list dataDecode)
 
 
 decodeSurah : Int -> SurahInfoDict -> Decoder SurahInfoDict
@@ -193,8 +228,9 @@ toLocation l =
 -- Ajax Requests
 
 
-rootsToLocationsUrl =
-    "https://raw.githubusercontent.com/sbakht/corpus-2.0/master/src/corpus-parser/output.json"
+rootsToLocationsUrl = "http://localhost:8080/roots/"
+--rootsToLocationsUrl =
+--    "https://raw.githubusercontent.com/sbakht/corpus-2.0/master/src/corpus-parser/output.json"
 
 
 surahsUrl =
@@ -433,10 +469,10 @@ update msg model =
             ( model, Cmd.none )
 
         LoadRootsInfo (Ok roots) ->
-            updateRoots roots model
+            updateRoots (Debug.log "decode roots" roots) model
 
-        LoadRootsInfo _ ->
-            ( model, Cmd.none )
+        LoadRootsInfo e ->
+            ( Debug.log (Debug.toString e) <| model, Cmd.none )
 
         LoadTranslations (Ok translations) ->
             ( { model | translations = D.fromList <| indexBy1 <| List.indexedMap Tuple.pair translations }, Cmd.none )
