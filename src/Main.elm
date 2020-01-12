@@ -228,9 +228,8 @@ toLocation l =
 -- Ajax Requests
 
 
-rootsToLocationsUrl = "http://localhost:8080/roots/"
---rootsToLocationsUrl =
---    "https://raw.githubusercontent.com/sbakht/corpus-2.0/master/src/corpus-parser/output.json"
+rootsToLocationsUrl =
+    "https://raw.githubusercontent.com/sbakht/corpus-2.0/master/src/corpus-parser/output.json"
 
 
 surahsUrl =
