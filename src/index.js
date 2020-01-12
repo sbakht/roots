@@ -1,15 +1,15 @@
 import './main.css';
-import { Elm } from './Main.elm';
+import { Elm } from './Remake.elm';
 import registerServiceWorker from './registerServiceWorker';
 
-const app = Elm.Main.init({
+const app = Elm.Remake.init({
   node: document.getElementById('root'),
   flags: JSON.parse(localStorage.getItem('Quran-progress'))
 });
 
-app.ports.saveProgress.subscribe(message => {
-   localStorage.setItem('Quran-progress', JSON.stringify(message))
-});
+//app.ports.saveProgress.subscribe(message => {
+//   localStorage.setItem('Quran-progress', JSON.stringify(message))
+//});
 
 
 registerServiceWorker();
