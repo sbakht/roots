@@ -40,6 +40,7 @@ type Msg
     | GoNextAyat
     | GoPreviousAyat
     | FetchRoots (Result Http.Error Roots)
+    | SetRelatedAyahs Root
     | NoOp
 
 
@@ -65,15 +66,20 @@ type alias Location = (Int, Int, Int)
 type alias ActiveLocation = Maybe {surahNumber : SurahNumber, ayahNumber: AyatNumber}
 type alias ActiveIndex = Maybe Int
 
-type alias Roots = Dict String Words
+type alias Roots = Dict Root Words
+type alias Root = String
+
+type alias Related = Maybe Ayahs
+type alias Levels = Dict Level Surahs
 
 type alias Model =
     {
         level: Level,
-        levels: Dict Level Surahs,
+        levels: Levels,
         activeLocation : ActiveLocation,
         activeIndex : ActiveIndex,
-        roots : Roots
+        roots : Roots,
+        related : Related
     }
 
 ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- -----------------
@@ -84,6 +90,9 @@ isLast (x,y) surah = False
 lastElem : List a -> Maybe a
 lastElem =
     List.foldl (Just >> always) Nothing
+
+flattenLevels : Level -> Levels -> Ayahs
+flattenLevels i levels = flattenSurahs <| getSurahsFromLevel i levels
 
 activeIndexToLocation : ActiveIndex -> Surahs -> ActiveLocation
 activeIndexToLocation index surahs =
@@ -237,7 +246,8 @@ init sessionProgress  =
         levels = Dict.empty,
         activeLocation = Nothing,
         activeIndex = Nothing,
-        roots = Dict.empty
+        roots = Dict.empty,
+        related = Nothing
     }
     , Cmd.batch [getAyatsByLevel 1, fetchRoots]
     )
@@ -285,11 +295,11 @@ update msg model = case msg of
         in
             if loadNextLevel then
                 if needToFetch then
-                    ({ model | activeLocation = getNewLocation,  activeIndex = newIndex}, getAyatsByLevel (model.level + 1))
+                    ({ model | activeLocation = getNewLocation,  activeIndex = newIndex, related = Nothing}, getAyatsByLevel (model.level + 1))
                 else
-                    ({ model | activeLocation = activeIndexToLocation (Just 0) nextLevelSurahs,  activeIndex = Just 0, level = model.level + 1}, Cmd.none)
+                    ({ model | activeLocation = activeIndexToLocation (Just 0) nextLevelSurahs,  activeIndex = Just 0, level = model.level + 1, related = Nothing}, Cmd.none)
             else
-                ({ model | activeLocation = getNewLocation,  activeIndex = newIndex}, Cmd.none)
+                ({ model | activeLocation = getNewLocation,  activeIndex = newIndex, related = Nothing}, Cmd.none)
     GoPreviousAyat ->
         let
            surahs = getSurahsFromLevel model.level model.levels
@@ -314,15 +324,17 @@ update msg model = case msg of
         in
             if loadPreviousLevel then
                 if needToFetch then
-                    ({ model | activeLocation = getNewLocation,  activeIndex = newIndex}, getAyatsByLevel (model.level - 1))
+                    ({ model | activeLocation = getNewLocation,  activeIndex = newIndex, related = Nothing}, getAyatsByLevel (model.level - 1))
                 else
-                    ({ model | activeLocation = (activeIndexToLocation lastIndexOfPreviousLevel previousLevelSurahs),  activeIndex = lastIndexOfPreviousLevel, level = model.level - 1}, Cmd.none)
+                    ({ model | activeLocation = (activeIndexToLocation lastIndexOfPreviousLevel previousLevelSurahs),  activeIndex = lastIndexOfPreviousLevel, level = model.level - 1, related = Nothing}, Cmd.none)
             else
-                ({ model | activeLocation = getNewLocation,  activeIndex = newIndex}, Cmd.none)
+                ({ model | activeLocation = getNewLocation,  activeIndex = newIndex, related = Nothing}, Cmd.none)
     FetchRoots (Ok roots) ->
         ({model | roots = roots}, Cmd.none)
     FetchRoots _ ->
         (model, Cmd.none)
+    SetRelatedAyahs root ->
+        ({model | related = Just (relatedAyahs model root)}, Cmd.none)
     _ ->
         (model, Cmd.none)
 
@@ -330,11 +342,111 @@ getSurahsFromLevel : Level -> Dict Level Surahs -> Surahs
 getSurahsFromLevel level levels = Maybe.withDefault [] (Dict.get level levels)
 ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- ----------------- -----------------
 
-ayahImage : SurahNumber -> AyatNumber -> Element msg
+
+relatedAyahs : Model -> Root -> Ayahs
+relatedAyahs model root =
+    let
+        currentLevelPastAyahs = List.take (Maybe.withDefault 0 model.activeIndex) <| flattenLevels model.level model.levels
+        ayahsToCheck = List.append (concat <| map (\i -> flattenLevels i model.levels) <| List.range 1 (model.level - 1)) currentLevelPastAyahs
+
+        hasRoot r word = word.root == r
+        isRelatedAyah ayah = length (filter (hasRoot root) ayah.words) > 0
+    in
+        filter isRelatedAyah ayahsToCheck
+
+hasRelatedAyahs model root = length (relatedAyahs model root) > 0
+
+getActiveAyah : Model -> Maybe Ayah
+getActiveAyah model =
+    case model.activeIndex of
+        Just i ->
+            Array.get i (Array.fromList (flattenSurahs (getSurahsFromLevel model.level model.levels)))
+        Nothing ->
+            Nothing
+
+ayahImage : SurahNumber -> AyatNumber -> Element Msg
 ayahImage x y = image [] {
             src = "http://www.everyayah.com/data/images_png/" ++ fromInt x ++ "_" ++ fromInt y ++ ".png",
             description = "ayat"
         }
+
+formatWords : Ayah -> List (String, Maybe Word)
+formatWords {arabic, words} =
+    let
+        addWhenYaa : String -> List String -> List String
+        addWhenYaa curr accum =
+            --    if curr == encode then
+            if List.member curr encode then
+                case accum of
+                    x :: xs ->
+                        (curr ++ " " ++ x) :: xs
+
+                    _ ->
+                        curr :: accum
+
+            else
+                curr :: accum
+        dict = List.foldr (\ word arr -> Dict.insert word.wordNumber word arr) Dict.empty words
+
+        joinedYaa : List String -> List String
+        joinedYaa str = str
+--        joinedYaa =
+--            List.foldr addWhenYaa []
+    in
+        Debug.log "hmm" <| List.indexedMap (\i str -> (str, Dict.get (i+1) dict)) (joinedYaa <| String.split " " arabic)
+
+viewAyah : Ayah -> Model -> Element Msg
+viewAyah ayah model = (map (viewWord model) (formatWords ayah))
+        |> Element.paragraph [ Font.size 30, spacingXY 0 20, Font.family [ Font.typeface "KFGQPC Uthman Taha Naskh" ] ]
+
+viewWordByWord : Ayah -> Element Msg
+viewWordByWord ayah = column [] <| map (\word ->
+    row [] <| [el [] <| text word.word,
+               text " - ",
+               el [] <| text word.translation
+               ]) ayah.words
+
+viewActiveAyah : Model -> Element Msg
+viewActiveAyah model = case getActiveAyah model of
+    Just ayah ->
+        column [] <| [viewAyah ayah model,
+                      viewTranslation ayah,
+                      viewWordByWord ayah]
+    Nothing ->
+        text ""
+
+viewRelated : Maybe Ayahs -> Element Msg
+viewRelated related =
+    case related of
+        Just ayahs ->
+            column [] <| map (\ayah -> column [] <| [el [] <| text ayah.arabic, viewTranslation ayah, viewWordByWord ayah]) ayahs
+        Nothing ->
+            text ""
+
+viewTranslation : Ayah -> Element Msg
+viewTranslation ayah = el [] (text ayah.translation)
+
+viewWord : Model -> (String, Maybe Word) -> Element Msg
+viewWord model (arabicStr, mbWord) =
+    case mbWord of
+        Just word ->
+            if hasRelatedAyahs model word.root then
+                el [pointer, Font.bold, Font.color (rgb 0 0 255) , onClick (SetRelatedAyahs word.root)] <| text (word.word ++ " " ++ "")
+            else
+                el [] <| text (word.word ++ " " ++ "")
+        Nothing ->
+            el [] <| text (arabicStr ++ " " ++ "")
+
+getSurahNum model = case model.activeLocation of
+    Just {surahNumber} ->
+        surahNumber
+    Nothing ->
+        0
+getAyahNum model = case model.activeLocation of
+    Just {ayahNumber} ->
+        ayahNumber
+    Nothing ->
+        0
 
 view : Model -> Browser.Document Msg
 view model =
@@ -344,7 +456,9 @@ view model =
             column [ width fill ]
                 [
                     el [] <| text "Home",
-                    ayahImage 1 2,
+--                    ayahImage (getSurahNum model) (getAyahNum model),
+                    viewActiveAyah model,
+                    viewRelated model.related,
                     el [onClick GoNextAyat] <| text "Next",
                     el [onClick GoPreviousAyat] <| text "Previous"
                     ]
